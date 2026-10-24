@@ -103,7 +103,7 @@ const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).
 const frames = DATA.frames, civs = DATA.civs, seats = new Set(DATA.externalSeats);
 const tiles = DATA.tiles;
 
-$("meta").textContent = `Game ${DATA.gameId} · ${DATA.mapSize} map · ${frames.length - 1} turns · strategist: ${DATA.policy || "agent"}`;
+$("meta").textContent = `Game ${DATA.gameId} \u00b7 ${DATA.mapSize} map \u00b7 ${frames.length - 1} turns \u00b7 strategist: ${DATA.policy || "agent"}`;
 
 // Unciv hex coords -> world: x along 10 o'clock, y along 2 o'clock (HexMath.hex2WorldCoords)
 const S3 = Math.sqrt(3);
@@ -111,6 +111,7 @@ const world = tiles.map(t => [1.5 * (t.y - t.x), (S3 / 2) * (t.x + t.y)]);
 const xs = world.map(p => p[0]), ys = world.map(p => p[1]);
 const minX = Math.min(...xs) - 1, maxX = Math.max(...xs) + 1, minY = Math.min(...ys) - 1, maxY = Math.max(...ys) + 1;
 const cv = $("map"), ctx = cv.getContext("2d");
+cv.width = 1000; cv.height = Math.round(1000 * (maxY - minY) / (maxX - minX));
 const scale = Math.min(cv.width / (maxX - minX), cv.height / (maxY - minY));
 const P = i => [(world[i][0] - minX) * scale, cv.height - (world[i][1] - minY) * scale];
 const byPos = new Map(tiles.map((t, i) => [t.x + "," + t.y, i]));
@@ -183,9 +184,9 @@ function drawLog(f) {
   }
   $("log").innerHTML = items.reverse().slice(0, 40).map(it => it.offline
     ? `<div class="offline">Turn ${it.turn}: seat offline, Unciv AI played it</div>`
-    : `<div class="dispatch${it.now ? " now" : ""}"><div class="t">Turn ${it.turn} · ${esc(it.d.civ)}</div>
+    : `<div class="dispatch${it.now ? " now" : ""}"><div class="t">Turn ${it.turn} &middot; ${esc(it.d.civ)}</div>
       <div>${esc(it.d.reasoning)}</div>
-      <ul>${it.d.results.map(r => `<li class="${r.accepted ? "ok" : "no"}">${r.accepted ? "✓" : "✗"} ${esc(r.reason)}</li>`).join("")}</ul></div>`
+      <ul>${it.d.results.map(r => `<li class="${r.accepted ? "ok" : "no"}">${r.accepted ? "&#10003;" : "&#10007;"} ${esc(r.reason)}</li>`).join("")}</ul></div>`
   ).join("") || `<div class="sub">No dispatches yet.</div>`;
 }
 function drawChart() {
@@ -193,8 +194,8 @@ function drawChart() {
   const W = 900, H = 200, L = 44, B = 24, T = 10;
   const tot = f => f.timings.aiMs + f.timings.seatAutomationMs + f.timings.maskMs + f.timings.saveMs;
   const max = Math.max(1, ...pts.map(tot));
-  const nice = Math.pow(10, Math.ceil(Math.log10(max))) / (max < Math.pow(10, Math.ceil(Math.log10(max))) / 2 ? 2 : 1);
-  const top = Math.max(nice, max);
+  const step = Math.pow(10, Math.floor(Math.log10(max))) / 2;
+  const top = Math.ceil(max / step) * step;
   const bw = (W - L - 8) / Math.max(1, pts.length);
   const y = v => H - B - (v / top) * (H - B - T);
   const parts = [["aiMs", css("--accent")], ["seatAutomationMs", css("--ok")], ["maskMs", css("--warn")], ["saveMs", css("--muted")]];

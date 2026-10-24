@@ -56,7 +56,8 @@ fun bootEngine() {
     val game = UncivGame(true)
     UncivGame.Current = game
     game.files = UncivFiles(Gdx.files, System.getProperty("mp.local", "/tmp/unciv-mpserver-local"))
-    game.settings = canonicalSettings()
+    game.settings = canonicalSettings().apply { musicVolume = 0f; soundEffectsVolume = 0f }
+    game.musicController = com.unciv.ui.audio.MusicController() // silent; nextTurn touches it every 10 turns
     RulesetCache.loadRulesets(true)
 }
 
