@@ -1,6 +1,7 @@
 """Tiny client for the mpserver HTTP API (stdlib only)."""
 import json
 import os
+import urllib.error
 import urllib.request
 
 BASE = os.environ.get("GAME_URL", "http://127.0.0.1:8090")
@@ -14,8 +15,11 @@ def _req(method, path, body=None, token=None, raw=False):
         req.add_header("X-Seat-Token", token)
     # Local server: bypass any configured HTTPS proxy.
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(req, timeout=600) as r:
-        payload = r.read().decode()
+    try:
+        with opener.open(req, timeout=600) as r:
+            payload = r.read().decode()
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"{method} {path} -> {e.code}: {e.read().decode()[:500]}") from None
     return payload if raw else json.loads(payload)
 
 

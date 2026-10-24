@@ -4,6 +4,8 @@ import com.badlogic.gdx.ApplicationAdapter
 import com.badlogic.gdx.backends.headless.HeadlessApplication
 import com.badlogic.gdx.backends.headless.HeadlessApplicationConfiguration
 import com.unciv.UncivGame
+import com.unciv.logic.files.UncivFiles
+import com.badlogic.gdx.Gdx
 import com.unciv.models.metadata.GameSettings
 import com.unciv.models.ruleset.RulesetCache
 import io.ktor.http.HttpStatusCode
@@ -53,6 +55,7 @@ fun bootEngine() {
     HeadlessApplication(object : ApplicationAdapter() {}, HeadlessApplicationConfiguration().apply { updatesPerSecond = -1 })
     val game = UncivGame(true)
     UncivGame.Current = game
+    game.files = UncivFiles(Gdx.files, System.getProperty("mp.local", "/tmp/unciv-mpserver-local"))
     game.settings = canonicalSettings()
     RulesetCache.loadRulesets(true)
 }
@@ -124,7 +127,10 @@ fun main(args: Array<String>) {
                 val req = call.receive<EndTurnRequest>()
                 if (!call.authorizedFor(host, req.civ)) return@post
                 val result = withContext(gameThread) { runCatching { host.endTurn(req.civ) } }
-                result.fold({ call.respond(it) }, { call.respond(HttpStatusCode.Conflict, mapOf("error" to (it.message ?: "error"))) })
+                result.fold({ call.respond(it) }, {
+                    it.printStackTrace()
+                    call.respond(HttpStatusCode.Conflict, mapOf("error" to (it.message ?: it.javaClass.simpleName)))
+                })
             }
 
             post("/games/{id}/presence/{civ}") {
