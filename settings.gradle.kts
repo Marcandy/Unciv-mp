@@ -7,7 +7,7 @@ pluginManagement {
     }
 }
 
-include("desktop", "core", "tests", "server")
+include("desktop", "core", "tests", "server", "mpserver")
 
 private fun getSdkPath(): String? {
     val localProperties = file("local.properties")

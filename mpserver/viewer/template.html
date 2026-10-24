@@ -1,0 +1,235 @@
+<title>Unciv Agent Seat Replay</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Literata:opsz,wght@7..72,600&display=swap">
+<style>
+/* Layout: war-room table. Map dominates on the left, the agent's dispatches and server clock on the right. */
+:root {
+  --bg: #eef1f3; --panel: #ffffff; --ink: #1c2630; --muted: #5d6b78; --line: #d3dae0;
+  --sea: #b9cfdc; --land: #d9d3bd; --accent: #2f5d8a; --warn: #a8471f; --ok: #3d7a4a;
+  --display: "Literata", Georgia, serif;
+  --ui: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11171d; --panel: #18212a; --ink: #e3e9ee; --muted: #93a2b0; --line: #2a3742;
+  --sea: #1f3442; --land: #3a3a30; --accent: #7fb0dd; --warn: #e08a5f; --ok: #7cc28b; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #11171d; --panel: #18212a; --ink: #e3e9ee; --muted: #93a2b0; --line: #2a3742;
+  --sea: #1f3442; --land: #3a3a30; --accent: #7fb0dd; --warn: #e08a5f; --ok: #7cc28b; color-scheme: dark }
+
+body { background: var(--bg); color: var(--ink); font-family: var(--ui); font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 1280px; margin: 0 auto; padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+h1 { font-family: var(--display); font-weight: 600; font-size: 1.7rem; margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); margin: 2px 0 0; max-width: 70ch; }
+.tag { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+.grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px; min-width: 0; }
+.panel h2 { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+canvas { width: 100%; height: auto; display: block; border-radius: 4px; background: var(--sea); }
+.controls { display: flex; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+button { font: 500 14px var(--ui); background: var(--accent); color: var(--panel); border: 0; border-radius: 4px; padding: 6px 14px; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input[type=range] { flex: 1; min-width: 160px; accent-color: var(--accent); }
+.turn { font-family: var(--mono); font-variant-numeric: tabular-nums; min-width: 7ch; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 13px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 2px; border: 1px solid var(--line); }
+.side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.scores { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; align-items: center; font-size: 14px; }
+.bar { height: 8px; border-radius: 2px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.seat { font-family: var(--mono); font-size: 11px; color: var(--accent); border: 1px solid var(--accent); border-radius: 3px; padding: 0 4px; margin-left: 6px; }
+.log { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
+.dispatch { border-left: 3px solid var(--accent); padding-left: 10px; }
+.dispatch.now { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.dispatch .t { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.dispatch ul { margin: 4px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+.ok { color: var(--ok); } .no { color: var(--warn); }
+.offline { font-family: var(--mono); font-size: 12px; color: var(--warn); }
+svg text { fill: var(--muted); font: 11px var(--mono); }
+.stats { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); margin-top: 8px; }
+.stats b { color: var(--ink); font-family: var(--mono); font-weight: 500; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="tag" id="meta"></div>
+      <h1>Agent seat on the real Unciv engine</h1>
+      <p class="sub">One civ is played by an outside strategist through the server's intent API. It sees only its own masked view; Unciv's AI moves its units and plays everyone else. When the seat goes offline, the world keeps playing.</p>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>World map (spectator view)</h2>
+      <canvas id="map" width="900" height="560" aria-label="Hex map of the game"></canvas>
+      <div class="controls">
+        <button id="play" type="button">Play</button>
+        <input id="slider" type="range" min="0" value="0" aria-label="Turn">
+        <span class="turn" id="turnLabel"></span>
+      </div>
+      <div class="legend" id="legend"></div>
+    </section>
+
+    <div class="side">
+      <section class="panel">
+        <h2>Score</h2>
+        <div class="scores" id="scores"></div>
+      </section>
+      <section class="panel">
+        <h2>Strategist dispatches</h2>
+        <div class="log" id="log"></div>
+      </section>
+    </div>
+  </div>
+
+  <section class="panel">
+    <h2>Server time per turn (ms)</h2>
+    <div style="overflow-x:auto"><svg id="chart" viewBox="0 0 900 200" width="100%" role="img" aria-label="Turn timings"></svg></div>
+    <div class="stats" id="stats"></div>
+  </section>
+</div>
+
+<script>
+const DATA = /*REPLAY_DATA*/null;
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const frames = DATA.frames, civs = DATA.civs, seats = new Set(DATA.externalSeats);
+const tiles = DATA.tiles;
+
+$("meta").textContent = `Game ${DATA.gameId} · ${DATA.mapSize} map · ${frames.length - 1} turns · strategist: ${DATA.policy || "agent"}`;
+
+// Unciv hex coords -> world: x along 10 o'clock, y along 2 o'clock (HexMath.hex2WorldCoords)
+const S3 = Math.sqrt(3);
+const world = tiles.map(t => [1.5 * (t.y - t.x), (S3 / 2) * (t.x + t.y)]);
+const xs = world.map(p => p[0]), ys = world.map(p => p[1]);
+const minX = Math.min(...xs) - 1, maxX = Math.max(...xs) + 1, minY = Math.min(...ys) - 1, maxY = Math.max(...ys) + 1;
+const cv = $("map"), ctx = cv.getContext("2d");
+const scale = Math.min(cv.width / (maxX - minX), cv.height / (maxY - minY));
+const P = i => [(world[i][0] - minX) * scale, cv.height - (world[i][1] - minY) * scale];
+const byPos = new Map(tiles.map((t, i) => [t.x + "," + t.y, i]));
+
+const TERRAIN = {
+  Ocean: "--sea", Coast: "--sea", Lakes: "--sea",
+};
+const terrainColor = t => {
+  if (t.terrain === "Ocean") return "#7fa3b9";
+  if (t.terrain === "Coast" || t.terrain === "Lakes") return "#9fc0d1";
+  if (t.terrain === "Mountain") return "#8a8378";
+  if (t.terrain === "Desert") return "#e0cf9c";
+  if (t.terrain === "Tundra") return "#c3c6b8";
+  if (t.terrain === "Snow") return "#eef0ee";
+  if (t.terrain === "Plains") return "#cdbf86";
+  const base = "#a9bf86"; // Grassland
+  return t.features.includes("Forest") || t.features.includes("Jungle") ? "#7f9a66" : base;
+};
+function hex(cx, cy, r) {
+  ctx.beginPath();
+  for (let k = 0; k < 6; k++) { const a = Math.PI / 3 * k; ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a)); }
+  ctx.closePath();
+}
+function draw(f) {
+  const fr = frames[f];
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  const r = scale * 1.0;
+  tiles.forEach((t, i) => {
+    const [x, y] = P(i);
+    hex(x, y, r);
+    ctx.fillStyle = terrainColor(t); ctx.fill();
+    const o = fr.owners[i];
+    if (o >= 0) { ctx.globalAlpha = 0.55; ctx.fillStyle = civs[o].outer; ctx.fill(); ctx.globalAlpha = 1; }
+  });
+  fr.units.forEach(u => {
+    const i = byPos.get(u.x + "," + u.y); if (i === undefined) return;
+    const [x, y] = P(i);
+    ctx.beginPath(); ctx.arc(x, y, r * (u.military ? 0.32 : 0.22), 0, Math.PI * 2);
+    ctx.fillStyle = civs[u.civ].inner; ctx.fill(); ctx.strokeStyle = civs[u.civ].outer; ctx.lineWidth = 1.5; ctx.stroke();
+  });
+  fr.cities.forEach(c => {
+    const i = byPos.get(c.x + "," + c.y); if (i === undefined) return;
+    const [x, y] = P(i);
+    ctx.fillStyle = civs[c.civ].outer; ctx.strokeStyle = "#1c2630"; ctx.lineWidth = 2;
+    ctx.fillRect(x - r * 0.5, y - r * 0.5, r, r); ctx.strokeRect(x - r * 0.5, y - r * 0.5, r, r);
+    ctx.font = `600 ${Math.max(10, r * 0.9)}px "IBM Plex Sans Condensed", sans-serif`;
+    ctx.fillStyle = "#111"; ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 3;
+    ctx.strokeText(`${c.name} ${c.pop}`, x + r * 0.7, y + 4); ctx.fillText(`${c.name} ${c.pop}`, x + r * 0.7, y + 4);
+  });
+  $("turnLabel").textContent = `Turn ${fr.turn}`;
+  drawScores(fr); drawLog(f);
+}
+function drawScores(fr) {
+  const entries = Object.entries(fr.scores).sort((a, b) => b[1] - a[1]);
+  const max = Math.max(1, ...entries.map(e => e[1]));
+  $("scores").innerHTML = entries.map(([n, s]) => {
+    const c = civs.find(c => c.civ === n);
+    return `<span>${n}${seats.has(n) ? '<span class="seat">agent</span>' : ""}</span>
+      <div class="bar" style="width:${(s / max * 100).toFixed(1)}%;background:${c.outer}"></div>
+      <span class="num">${s}</span>`;
+  }).join("");
+}
+function esc(s) { return String(s ?? "").replace(/[&<>]/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[m]); }
+function drawLog(f) {
+  const items = [];
+  for (let i = 0; i <= f; i++) {
+    const fr = frames[i];
+    fr.agentDecisions.forEach(d => items.push({ turn: frames[Math.max(0, i - 1)].turn, d, now: i === f }));
+    if (fr.offline) items.push({ turn: fr.turn, offline: true, now: i === f });
+  }
+  $("log").innerHTML = items.reverse().slice(0, 40).map(it => it.offline
+    ? `<div class="offline">Turn ${it.turn}: seat offline, Unciv AI played it</div>`
+    : `<div class="dispatch${it.now ? " now" : ""}"><div class="t">Turn ${it.turn} · ${esc(it.d.civ)}</div>
+      <div>${esc(it.d.reasoning)}</div>
+      <ul>${it.d.results.map(r => `<li class="${r.accepted ? "ok" : "no"}">${r.accepted ? "✓" : "✗"} ${esc(r.reason)}</li>`).join("")}</ul></div>`
+  ).join("") || `<div class="sub">No dispatches yet.</div>`;
+}
+function drawChart() {
+  const pts = frames.filter(f => f.timings);
+  const W = 900, H = 200, L = 44, B = 24, T = 10;
+  const tot = f => f.timings.aiMs + f.timings.seatAutomationMs + f.timings.maskMs + f.timings.saveMs;
+  const max = Math.max(1, ...pts.map(tot));
+  const nice = Math.pow(10, Math.ceil(Math.log10(max))) / (max < Math.pow(10, Math.ceil(Math.log10(max))) / 2 ? 2 : 1);
+  const top = Math.max(nice, max);
+  const bw = (W - L - 8) / Math.max(1, pts.length);
+  const y = v => H - B - (v / top) * (H - B - T);
+  const parts = [["aiMs", css("--accent")], ["seatAutomationMs", css("--ok")], ["maskMs", css("--warn")], ["saveMs", css("--muted")]];
+  let s = "";
+  for (let k = 0; k <= 4; k++) { const v = top * k / 4; s += `<line x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="${css("--line")}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${Math.round(v)}</text>`; }
+  pts.forEach((f, i) => {
+    let acc = 0; const x = L + 4 + i * bw;
+    parts.forEach(([k, col]) => { const v = f.timings[k]; s += `<rect x="${x}" y="${y(acc + v)}" width="${Math.max(1, bw - 1)}" height="${y(acc) - y(acc + v)}" fill="${col}"/>`; acc += v; });
+    if (i % Math.ceil(pts.length / 10) === 0) s += `<text x="${x + bw / 2}" y="${H - 6}" text-anchor="middle">${f.turn}</text>`;
+  });
+  $("chart").innerHTML = s;
+  const avg = k => Math.round(pts.reduce((a, f) => a + f.timings[k], 0) / Math.max(1, pts.length));
+  const loads = pts.map(f => f.timings.loadMs).filter(v => v != null);
+  const last = pts[pts.length - 1];
+  $("stats").innerHTML = [
+    [css("--accent"), "AI turns (all other civs)", avg("aiMs")],
+    [css("--ok"), "Seat stewardship", avg("seatAutomationMs")],
+    [css("--warn"), "Masked view", avg("maskMs")],
+    [css("--muted"), "Save + gzip", avg("saveMs")],
+  ].map(([c, l, v]) => `<span><span class="sw" style="display:inline-block;background:${c}"></span> ${l}: <b>${v} ms</b> avg</span>`).join("")
+    + `<span>Load: <b>${loads.length ? Math.round(loads.reduce((a, b) => a + b) / loads.length) : "–"} ms</b> avg</span>`
+    + `<span>Save size: <b>${last ? Math.round(last.timings.saveBytes / 1024) : 0} KB</b></span>`;
+}
+$("legend").innerHTML = civs.filter(c => !c.isCityState && c.civ !== "Barbarians").map(c =>
+  `<span><span class="sw" style="background:${c.outer}"></span>${c.civ}${seats.has(c.civ) ? " (agent)" : ""}</span>`).join("")
+  + `<span><span class="sw" style="background:#999"></span>city-states shaded by color</span>`;
+
+const sl = $("slider"); sl.max = frames.length - 1; sl.value = frames.length - 1;
+sl.addEventListener("input", () => draw(+sl.value));
+let timer = null;
+$("play").addEventListener("click", () => {
+  if (timer) { clearInterval(timer); timer = null; $("play").textContent = "Play"; return; }
+  if (+sl.value >= frames.length - 1) sl.value = 0;
+  $("play").textContent = "Pause";
+  timer = setInterval(() => { if (+sl.value >= frames.length - 1) { clearInterval(timer); timer = null; $("play").textContent = "Play"; return; } sl.value = +sl.value + 1; draw(+sl.value); }, 350);
+});
+draw(frames.length - 1); drawChart();
+</script>
