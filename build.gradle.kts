@@ -158,6 +158,7 @@ project(":mpserver") {
         "implementation"(project(":core"))
         "implementation"(rootProject.libs.gdx)
         "implementation"(rootProject.libs.gdx.backend.headless)
+        "implementation"(gdxNatives("desktop"))
         "implementation"(rootProject.libs.coroutines.core)
         "implementation"(rootProject.libs.bundles.ktor.server)
         "implementation"(rootProject.libs.logback)
