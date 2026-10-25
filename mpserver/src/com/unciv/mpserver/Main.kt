@@ -239,7 +239,7 @@ private fun restoreLatest(): GameHost? {
 
 /**
  * 8v8 timing + AI sanity benchmark, all 16 civs Unciv AI (worst case for server time per round):
- * `./gradlew :mpserver:run -PserverArgs="bench <mapSize> <turns> [warFromTurn|vanilla] [cityStates]"`.
+ * `./gradlew :mpserver:run -PserverArgs="bench <mapSize> <turns> [warFromTurn|vanilla] [cityStates] [seed]"`.
  * "vanilla" keeps Unciv's free diplomacy (teams are only labels), as a control.
  */
 private fun bench(args: List<String>) {
@@ -248,14 +248,16 @@ private fun bench(args: List<String>) {
     val mode = args.getOrNull(2)
     val defaults = CreateGameRequest()
     val request = defaults.copy(mapSize = mapSize, externalSeats = emptyList(), fixedTeams = mode != "vanilla",
-        warFromTurn = mode?.toIntOrNull() ?: defaults.warFromTurn, cityStates = args.getOrNull(3)?.toIntOrNull() ?: defaults.cityStates)
+        warFromTurn = mode?.toIntOrNull() ?: defaults.warFromTurn, cityStates = args.getOrNull(3)?.toIntOrNull() ?: defaults.cityStates,
+        seed = args.getOrNull(4)?.toLongOrNull() ?: defaults.seed)
     val dir = File(System.getProperty("java.io.tmpdir"), "mpserver-bench").apply { deleteRecursively() }
     onGameThread {
         val host = GameHost.create("bench", request, dir)
         println("bench: $mapSize (${host.game.tileMap.tileList.size} tiles), ${request.teams.values.sumOf { it.size }} majors, " +
-            "${request.cityStates} city-states, " + if (request.fixedTeams) "fixed teams, war from turn ${request.warFromTurn}" else "vanilla diplomacy")
+            "${request.cityStates} city-states, seed ${request.seed}, " + if (request.fixedTeams) "fixed teams, war from turn ${request.warFromTurn}" else "vanilla diplomacy")
         val roundMs = ArrayList<Long>()
-        for (r in host.autoplay(turns)) {
+        // One round at a time, so checkpoints see the world as it was at that turn
+        for (r in (1..turns).asSequence().flatMap { host.autoplay(1) }) {
             roundMs += r.timings.run { seatMs + aiMs + turnMs + saveMs }
             if (host.game.turns % 50 == 0 || r.winningTeam != null) {
                 println(teamSnapshot(host) + "  | round ms avg ${roundMs.average().toLong()} max ${roundMs.max()}, save ${r.timings.saveBytes / 1024} KB")
