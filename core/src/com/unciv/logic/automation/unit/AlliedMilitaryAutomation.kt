@@ -33,7 +33,14 @@ object AlliedMilitaryAutomation {
      * Cautious personalities (low Aggressive) react to smaller threats.
      */
     @Readonly
-    fun isCityLocallyThreatened(city: City): Boolean {
+    fun isCityLocallyThreatened(city: City): Boolean = reinforcementNeeded(city) > 0
+
+    /**
+     * How much unit power [city] is missing to hold against the visible enemy units within [LOCAL_RADIUS]; 0 when safe.
+     * Aggressive 5 (neutral) -> act when threat > 1.5x defense; 9 -> 2.3x; 2 -> 0.9x
+     */
+    @Readonly
+    fun reinforcementNeeded(city: City): Int {
         val civ = city.civ
         var threat = 0
         var defense = 0
@@ -46,10 +53,9 @@ object AlliedMilitaryAutomation {
                 }
             }
         }
-        if (threat == 0) return false
-        // Aggressive 5 (neutral) -> act when threat > 1.5x defense; 9 -> 2.3x; 2 -> 0.9x
+        if (threat == 0) return 0
         val tolerance = 0.5f + civ.getPersonality()[PersonalityValue.Aggressive] / 5f
-        return threat > defense * tolerance
+        return if (threat > defense * tolerance) threat - defense else 0
     }
 
     /** Our units and our allies' units within [radius] of [tile] — they besiege a city together. */
@@ -76,5 +82,90 @@ object AlliedMilitaryAutomation {
             .filter { it.health < it.getMaxHealth() && it.getCenterTile().aerialDistanceTo(unit.getTile()) <= radius }
             .sortedBy { it.getCenterTile().aerialDistanceTo(unit.getTile()) }
             .toList()
+    }
+
+    // Team reinforcement: civs far from the front send units to their team's threatened cities.
+    // Without it, the rear half of a team never fights: its cities see no threat, so it trains no army,
+    // and the "help a damaged ally city" radius never reaches the front on a Huge map.
+
+    private var cachedTurn = -1
+    private val threatenedCitiesByCiv = HashMap<String, List<City>>()
+    /** Unit power already sent to each threatened city this turn, so the whole team doesn't pile onto one city. */
+    private val powerSentTo = HashMap<City, Int>()
+
+    private fun refreshCache(civ: Civilization) {
+        if (civ.gameInfo.turns == cachedTurn) return
+        cachedTurn = civ.gameInfo.turns
+        threatenedCitiesByCiv.clear()
+        powerSentTo.clear()
+    }
+
+    /** Our and our allies' cities that are outnumbered right now (computed once per civ per turn). */
+    fun threatenedTeamCities(civ: Civilization): List<City> {
+        refreshCache(civ)
+        return threatenedCitiesByCiv.getOrPut(civ.civName) {
+            civ.gameInfo.civilizations.filter { it == civ || isAlly(civ, it) }
+                .flatMap { it.cities }.filter { isCityLocallyThreatened(it) }
+        }
+    }
+
+    @Readonly
+    private fun hasAllies(civ: Civilization): Boolean = civ.isMajorCiv() && civ.gameInfo.civilizations.any { isAlly(civ, it) }
+
+    @Readonly
+    private fun isEnemyNear(unit: MapUnit, radius: Int): Boolean = unit.getTile().getTilesInDistance(radius).any { tile ->
+        tile.isVisible(unit.civ) && tile.getUnits().any { it.isMilitary() && unit.civ.isAtWarWith(it.civ) }
+    }
+
+    /**
+     * Send an idle land unit to the nearest outnumbered city of our team, at any distance, before the siege starts.
+     * Garrisons stay home, and units already fighting keep fighting. Returns true when the unit used its movement.
+     */
+    fun tryReinforceTeam(unit: MapUnit): Boolean {
+        if (!unit.baseUnit.isLandUnit || !hasAllies(unit.civ)) return false
+        val here = unit.getTile()
+        if (here.isCityCenter() && here.getOwner() == unit.civ) return false // garrison
+        if (isEnemyNear(unit, 3)) return false
+        val targets = threatenedTeamCities(unit.civ)
+            .filter { powerSentTo.getOrElse(it) { 0 } < reinforcementNeeded(it) }
+            .sortedBy { it.getCenterTile().aerialDistanceTo(here) }
+            .take(3)
+        for (city in targets) {
+            if (city.getCenterTile().aerialDistanceTo(here) <= 2) return false // already there
+            val tile = city.getCenterTile().getTilesInDistance(2)
+                .sortedBy { it.aerialDistanceTo(here) }
+                .firstOrNull { unit.movement.canMoveTo(it) && unit.movement.canReach(it) && unit.getDamageFromTerrain(it) <= 0 }
+                ?: continue
+            powerSentTo[city] = powerSentTo.getOrElse(city) { 0 } + power(unit)
+            unit.movement.headTowards(tile)
+            return !unit.hasMovement()
+        }
+        return false
+    }
+
+    /**
+     * A unit next to an allied city with enemies around holds there instead of walking back to garrison its own cities.
+     * Called after attack and siege options, so it only applies to units with nothing better to do.
+     */
+    fun tryHoldNearAlliedCity(unit: MapUnit): Boolean {
+        if (!unit.baseUnit.isLandUnit || !hasAllies(unit.civ)) return false
+        val here = unit.getTile()
+        val nearAllyCity = here.getTilesInDistance(2).any { it.isCityCenter() && it.getOwner()?.let { o -> isAlly(unit.civ, o) } == true }
+        if (!nearAllyCity || !isEnemyNear(unit, LOCAL_RADIUS)) return false
+        unit.fortifyIfCan()
+        return true
+    }
+
+    /**
+     * Rear cities train units for the team: while a teammate's city is outnumbered and our own cities are safe,
+     * keep an army of (1 + Military/10) units per city. Without this the safe half of a team builds almost nothing.
+     */
+    fun shouldTrainForTeam(city: City): Boolean {
+        val civ = city.civ
+        if (!hasAllies(civ)) return false
+        val threatened = threatenedTeamCities(civ)
+        if (threatened.isEmpty() || threatened.any { it.civ == civ }) return false
+        val wanted = civ.cities.size * (1f + civ.getPersonality()[PersonalityValue.Military] / 10f)
+        return civ.units.getCivUnits().count { it.isMilitary() } < wanted
     }
 }
