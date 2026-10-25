@@ -81,8 +81,8 @@ dir for CLI runs (init script setting `layout.buildDirectory`) or disable `java.
   no starting defenders yet), **random leaders**, grouped starts. 15 tests pass.
 - 15 seeds × 300 turns (old AI): turn-150 leader wins 13/15, Allies 8 / Axis 7 (random leaders fixed the Axis bias).
 - AI: rear civs reinforce their team's threatened cities and train units for the team (`AlliedMilitaryAutomation`);
-  **teammates share vision** (fixed-team pacts, `CivInfoTransientCache`): done. 45-game re-bench (2/3/4 CS) running;
-  4 CS: leader wins 12/15, 10/15 games decided before 300.
+  **teammates share vision** (fixed-team pacts, `CivInfoTransientCache`): done. 45-game re-bench (2/3/4 CS):
+  leader wins 12-13/15 in every batch, more captures (+9-17%), no crashes. Design paper: Drive doc 12.
 - Opt-in anti-snowball `CatchUp` (overextension + bounty), `CreateGameRequest.catchUp`, bench arg `catchup`. Not measured.
 - **Focus now: phone clients.** Plan in Drive `13-Mobile-Adversarial-Review-and-Cheapest-Path.md` (supersedes the
   order in doc 08). Team balance resumes later (doc 12 / design paper).
