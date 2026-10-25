@@ -122,6 +122,7 @@ object TeamRules {
         val acrossMax = world.values.maxOf(across)
         val startTiles = majors.map { startTile(it) }
         val chosen = ArrayList<Tile>()
+        val defenders = cityStateDefenders(game)
         for ((i, cs) in cityStates.withIndex()) {
             val target = acrossMin + (acrossMax - acrossMin) * (i + 1) / (cityStates.size + 1)
             val site = land
@@ -133,7 +134,7 @@ object TeamRules {
             cs.units.getCivUnits().toList().forEach { it.destroy() }
             val city = cs.addCity(site.position)
             for (tile in site.getTilesInDistance(2)) if (tile.getOwner() == null) city.expansion.takeOwnership(tile)
-            for (name in keep) cs.units.placeUnitNearTile(site.position, name)
+            for (name in keep + defenders) cs.units.placeUnitNearTile(site.position, name)
             addRichResources(game, site, rng)
             for (major in majors) {
                 if (!cs.knows(major)) cs.diplomacyFunctions.makeCivilizationsMeet(major, warOnContact = true)
@@ -142,6 +143,22 @@ object TeamRules {
             cs.cache.updateViewableTiles()
         }
         majors.forEach { it.popupAlerts.clear() }
+    }
+
+    /**
+     * Unciv starts city-states with only a settler, so a contested city-state would sit undefended on the front.
+     * Each gets the best melee and the best ranged land unit of the starting era (no unique units, no strategic
+     * resources needed): Spearman and Archer in the Ancient era.
+     */
+    fun cityStateDefenders(game: GameInfo): List<String> {
+        val era = game.gameParameters.startingEra
+        val candidates = game.ruleset.units.values.filter { unit ->
+            unit.isMilitary && unit.isLandUnit && unit.uniqueTo == null && !unit.hasUnique(UniqueType.FoundCity)
+                && unit.getResourceRequirementsPerTurn(null).isEmpty()
+                && unit.requiredTech.let { it == null || game.ruleset.technologies[it]?.era() == era }
+        }
+        return listOfNotNull(candidates.filter { it.isMelee() }.maxByOrNull { it.strength },
+            candidates.filter { it.isRanged() }.maxByOrNull { it.rangedStrength }).map { it.name }
     }
 
     /** Up to 6 luxury/strategic resources on suitable tiles within 2 of the city, strategic ones as major deposits. */

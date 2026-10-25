@@ -110,7 +110,7 @@ class RoundTest {
         assertEquals(3, log.size)
     }
 
-    @Test fun cityStatesSitBetweenTheTeamsRichAndAtWarWithEveryone() {
+    @Test fun cityStatesSitBetweenTheTeamsRichDefendedAndAtWarOnlyWithTeams() {
         val host = GameHost.create("cs", CreateGameRequest(mapSize = "Small", cityStates = 2, teams = teams,
             externalSeats = listOf("America", "Germany"), seed = 11, randomLeaders = false), dataDir)
         val cityStates = host.game.civilizations.filter { it.isCityState }
@@ -119,6 +119,9 @@ class RoundTest {
         for (cs in cityStates) {
             val city = cs.cities.single()
             for (major in majors) assertEquals(DiplomaticStatus.War, cs.getDiplomacyManager(major)!!.diplomaticStatus)
+            for (other in cityStates.filter { it != cs && cs.knows(it) })
+                assertTrue("${cs.civName} at war with ${other.civName}", cs.getDiplomacyManager(other)!!.diplomaticStatus != DiplomaticStatus.War)
+            assertEquals(listOf("Archer", "Spearman"), cs.units.getCivUnits().filter { it.isMilitary() }.map { it.name }.sorted().toList())
             val rich = city.getCenterTile().getTilesInDistance(2).count { it.tileResource?.resourceType.let { t ->
                 t == ResourceType.Luxury || t == ResourceType.Strategic } }
             assertTrue("only $rich rich tiles near ${city.name}", rich >= 3)
