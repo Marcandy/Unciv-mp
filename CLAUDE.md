@@ -76,11 +76,22 @@ dir for CLI runs (init script setting `layout.buildDirectory`) or disable `java.
 - Plans written to Drive: `08-Mobile-Plan-Android-iOS.md`, `09-Architecture-Least-Maintenance-8v8.md`,
   `10-Release-under-LLC-and-Monetization-Guardrails.md`. Key new fact: Apple rejected Unciv4iOS under 4.3(a) on 28 Sep 2026.
 
+## Status addendum (25 Oct 2026, day 2)
+- Defaults: Huge, war at 20, **3 contested city-states on the front line** (rich resources, at war with both teams,
+  no starting defenders yet), **random leaders**, grouped starts. 15 tests pass.
+- 15 seeds × 300 turns (old AI): turn-150 leader wins 13/15, Allies 8 / Axis 7 (random leaders fixed the Axis bias).
+- AI: rear civs reinforce their team's threatened cities and train units for the team (`AlliedMilitaryAutomation`);
+  **teammates share vision** (fixed-team pacts, `CivInfoTransientCache`): done. 45-game re-bench (2/3/4 CS) running;
+  4 CS: leader wins 12/15, 10/15 games decided before 300.
+- Opt-in anti-snowball `CatchUp` (overextension + bounty), `CreateGameRequest.catchUp`, bench arg `catchup`. Not measured.
+- **Focus now: phone clients.** Plan in Drive `13-Mobile-Adversarial-Review-and-Cheapest-Path.md` (supersedes the
+  order in doc 08). Team balance resumes later (doc 12 / design paper).
+
 ## Next, in order
-1. Client path for Android/iOS: Stage-1 masked `GameInfo` with `MaskRoundTripTest` + `MaskLeakTest` first;
-   client plays the round locally and sends intents. Measure 16 civs / Huge on a mid-range Android phone.
-2. Unit intents (move, attack, found city) validated against explored/visible tiles (`IntentVisibilityTest`).
-3. Team balance (Axis ahead 7/10: swap rosters / random teams), then a shared team war target.
-4. WebSocket push of round results; APNs/FCM push.
-5. Team features: shared vision, team-grouped starting positions, teammate open borders.
-6. Gate 0 on the target VPS.
+1. S0: Android SDK + turn-200 Huge save on a real phone; in parallel a gdx-teavm web spike on iPhone Safari.
+2. CI (GitHub Actions): `:mpserver:test` + Android debug build.
+3. Client protocol on upstream's View layer: serialise each `View.try…` call as an intent, replay it on the server
+   (60 `try…` functions exist; upstream issue #15280). Full (unmasked) state in the closed beta.
+4. Android closed beta (own name/icon, FCM push, WebSocket rounds); then web build for iOS players.
+5. Masking (Stage 1 + `MaskLeakTest`) before any public link. App Store only after that (4.3 risk).
+6. Game: city-state starting defenders; longer early timer when humans are seated; catch-up measured; team resource gifting.
