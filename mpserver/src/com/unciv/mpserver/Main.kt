@@ -48,7 +48,7 @@ fun canonicalSettings() = GameSettings().apply {
     automatedUnitsMoveOnTurnStart = false
     citiesAutoBombardAtEndOfTurn = true
     automatedUnitsChoosePromotions = true
-    useAStarPathfinding = true
+    useAStarPathfinding = false // the experimental A* path never reaches enemy city tiles, so the AI could not pick siege targets
 }
 
 fun bootEngine() {
