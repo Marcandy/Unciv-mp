@@ -52,6 +52,7 @@ android {
     buildTypes {
         debug {
             isDebuggable = true
+            applicationIdSuffix = ".mp.debug" // installs next to the store version of Unciv
         }
         release {
             // If you make this true you get a version of the game that just flat-out doesn't run
