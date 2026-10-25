@@ -38,6 +38,17 @@ class RoundTest {
         assertTrue(host.game.ruleset.modOptions.hasUnique(UniqueType.DiplomaticRelationshipsCannotChange))
     }
 
+    @Test fun teammatesShareVision() {
+        val host = newHost()
+        host.autoplay(2)
+        val america = host.civ("America")!!
+        val england = host.civ("England")!!
+        america.cache.updateViewableTiles()
+        val englandSees = england.cache.ourTilesAndNeighboringTiles + england.units.getCivUnits().flatMap { it.viewableTiles }
+        assertTrue(englandSees.isNotEmpty())
+        assertTrue(englandSees.all { it in america.viewableTiles })
+    }
+
     @Test fun peacePeriodEndsInWarAtTheConfiguredTurn() {
         val host = newHost(warFromTurn = 2)
         val america = host.civ("America")!!
