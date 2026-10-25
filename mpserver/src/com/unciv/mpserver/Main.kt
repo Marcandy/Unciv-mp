@@ -238,81 +238,51 @@ private fun restoreLatest(): GameHost? {
 }
 
 /**
- * Gate 0 for 8v8: `./gradlew :mpserver:run -PserverArgs="bench Large 100"`.
- * All 16 civs are Unciv AI, so this is the worst case for server time per round.
+ * 8v8 timing + AI sanity benchmark, all 16 civs Unciv AI (worst case for server time per round):
+ * `./gradlew :mpserver:run -PserverArgs="bench <mapSize> <turns> [warFromTurn|vanilla] [cityStates]"`.
+ * "vanilla" keeps Unciv's free diplomacy (teams are only labels), as a control.
  */
 private fun bench(args: List<String>) {
-    val mapSize = args.getOrNull(0) ?: "Large"
+    val mapSize = args.getOrNull(0) ?: "Huge"
     val turns = args.getOrNull(1)?.toIntOrNull() ?: 100
+    val mode = args.getOrNull(2)
+    val defaults = CreateGameRequest()
+    val request = defaults.copy(mapSize = mapSize, externalSeats = emptyList(), fixedTeams = mode != "vanilla",
+        warFromTurn = mode?.toIntOrNull() ?: defaults.warFromTurn, cityStates = args.getOrNull(3)?.toIntOrNull() ?: defaults.cityStates)
     val dir = File(System.getProperty("java.io.tmpdir"), "mpserver-bench").apply { deleteRecursively() }
     onGameThread {
-        // Third arg: "vanilla" (free diplomacy, the control) or the turn teams go to war (default 30)
-        val mode = args.getOrNull(2)
-        val request = CreateGameRequest(mapSize = mapSize, externalSeats = emptyList(),
-            fixedTeams = mode != "vanilla", warFromTurn = mode?.toIntOrNull() ?: 30)
         val host = GameHost.create("bench", request, dir)
-        println("bench: ${mode ?: "teams, war from 30"}, $mapSize, ${host.game.civilizations.count { it.isMajorCiv() }} majors, ${host.game.tileMap.tileList.size} tiles")
-        println("turn  aiMs  turnMs  saveMs  saveKB  heapMB")
-        val rt = Runtime.getRuntime()
+        println("bench: $mapSize (${host.game.tileMap.tileList.size} tiles), ${request.teams.values.sumOf { it.size }} majors, " +
+            "${request.cityStates} city-states, " + if (request.fixedTeams) "fixed teams, war from turn ${request.warFromTurn}" else "vanilla diplomacy")
+        val roundMs = ArrayList<Long>()
         for (r in host.autoplay(turns)) {
-            val t = r.timings
-            println("%4d %5d %7d %7d %7d %7d".format(t.turn, t.aiMs, t.turnMs, t.saveMs, t.saveBytes / 1024, (rt.totalMemory() - rt.freeMemory()) / 1_048_576))
-            if (r.winningTeam != null) { println("winner: ${r.winningTeam}"); break }
-        }
-        // Sanity check that the world actually moved, not just that rounds were fast
-        for (civ in host.game.civilizations.filter { it.isMajorCiv() }) {
-            val atWar = civ.getCivsAtWarWith().count { it.isMajorCiv() }
-            println("  %-16s cities %2d (secondary %2d, captured %d)  pop %3d  military %3d  at war with %2d majors".format(
-                civ.civName, civ.cities.size, civ.cities.count { !it.isCapital() }, civ.cities.count { it.foundingCivObject != civ },
-                civ.cities.sumOf { it.population.population }, civ.units.getCivUnits().count { it.isMilitary() }, atWar))
-        }
-        // Where are the armies? Home, in the field, or near an enemy city
-        val enemyCityTiles = { civ: com.unciv.logic.civilization.Civilization ->
-            host.game.getCities().filter { civ.isAtWarWith(it.civ) && it.civ.isMajorCiv() }.map { it.getCenterTile() }.toList() }
-        var home = 0; var field = 0; var nearEnemy = 0
-        for (civ in host.game.civilizations.filter { it.isMajorCiv() }) {
-            val targets = enemyCityTiles(civ)
-            for (u in civ.units.getCivUnits().filter { it.isMilitary() }) when {
-                targets.any { it.aerialDistanceTo(u.getTile()) <= 6 } -> nearEnemy++
-                u.getTile().getOwner() == civ -> home++
-                else -> field++
+            roundMs += r.timings.run { seatMs + aiMs + turnMs + saveMs }
+            if (host.game.turns % 50 == 0 || r.winningTeam != null) {
+                println(teamSnapshot(host) + "  | round ms avg ${roundMs.average().toLong()} max ${roundMs.max()}, save ${r.timings.saveBytes / 1024} KB")
+                roundMs.clear()
             }
+            if (r.winningTeam != null) { println("WINNER at turn ${host.game.turns}: ${r.winningTeam}"); break }
         }
-        println("military units: $home at home, $field elsewhere, $nearEnemy within 6 tiles of an enemy city")
-        // Siege math for the most-surrounded cities: what the AI's "can we take it soon" check sees
-        val sieges = host.game.getCities().filter { it.civ.isMajorCiv() }.map { city ->
-            val besiegers = city.getCenterTile().getTilesInDistance(6).flatMap { it.getUnits() }
-                .filter { it.isMilitary() && it.civ.isMajorCiv() && it.civ.isAtWarWith(city.civ) }.toList()
-            val dmg = besiegers.sumOf { com.unciv.logic.battle.BattleDamage.calculateDamageToDefender(
-                com.unciv.logic.battle.MapUnitCombatant(it), com.unciv.logic.battle.CityCombatant(city)) }
-            Triple(city, besiegers, dmg)
-        }.toList().sortedByDescending { it.second.size }.take(5)
-        for ((city, besiegers, dmg) in sieges) println("  siege ${city.name} (${city.civ.civName}): health ${city.health}, " +
-            "${besiegers.size} enemy units within 6 (${besiegers.map { it.civ.civName }.distinct().size} civs, ${besiegers.count { it.getTile().aerialDistanceTo(city.getCenterTile()) <= 2 }} adjacent-ish), " +
-            "their damage/turn $dmg, garrison ${city.getCenterTile().militaryUnit?.name}")
-        // What are those besiegers actually aiming at?
-        sieges.firstOrNull()?.second?.groupBy { u ->
-            val target = com.unciv.logic.automation.unit.HeadTowardsEnemyCityAutomation.getEnemyCitiesByPriority(
-                com.unciv.view.GameView(host.game, u.civ).getMapUnitView(u)).firstOrNull { u.movement.canReach(it.getCenterTile()) }
-            val where = if (u.getTile().getOwner() == u.civ) "own land" else "outside"
-            "target=${target?.name} (${target?.getCenterTile()?.aerialDistanceTo(u.getTile())} tiles), $where, hp<50=${u.health < 50}"
-        }?.forEach { (k, v) -> println("    ${v.size}x $k") }
-        val nearest = host.game.civilizations.filter { it.isMajorCiv() && it.getCapital() != null }.map { civ ->
-            enemyCityTiles(civ).minOfOrNull { it.aerialDistanceTo(civ.getCapital()!!.getCenterTile()) } ?: -1 }
-        println("distance capital -> nearest enemy city: min ${nearest.min()}, median ${nearest.sorted()[nearest.size / 2]}, max ${nearest.max()}")
-        for ((team, nations) in host.request.teams) {
-            val civs = host.game.civilizations.filter { it.civName in nations }
-            println("$team: ${civs.count { it.isAlive() }}/${civs.size} alive, ${civs.sumOf { it.cities.size }} cities, " +
-                "${civs.sumOf { it.units.getCivUnits().count() }} units, techs ${civs.sumOf { it.tech.techsResearched.size }}")
+        println("final, per civ:")
+        for ((team, nations) in request.teams) for (civ in host.game.civilizations.filter { it.civName in nations }) {
+            println("  %-6s %-16s %-5s cities %2d (captured %d)  pop %3d  military %3d".format(team, civ.civName,
+                if (civ.isAlive()) "" else "DEAD", civ.cities.size, civ.cities.count { it.foundingCivObject != civ },
+                civ.cities.sumOf { it.population.population }, civ.units.getCivUnits().count { it.isMilitary() }))
         }
-        val captured = host.game.getCities().count { it.foundingCivObject != null && it.foundingCivObject != it.civ }
-        println("cities that changed hands: $captured")
         val loadMs = timed { GameStore(File(dir, "bench")).load() }
         UncivGame.Current.gameInfo = host.game
         println("load save.txt: $loadMs ms")
     }
     System.exit(0)
 }
+
+/** One line per checkpoint: turn, and per team alive civs, cities, cities captured from the other team, techs. */
+private fun teamSnapshot(host: GameHost): String = "turn %3d  ".format(host.game.turns) +
+    host.request.teams.entries.joinToString("  ") { (team, nations) ->
+        val civs = host.game.civilizations.filter { it.civName in nations }
+        val captured = civs.flatMap { it.cities }.count { it.foundingCivObject != null && it.foundingCivObject!!.civName !in nations }
+        "$team: ${civs.count { it.isAlive() }}/${civs.size} alive, ${civs.sumOf { it.cities.size }} cities ($captured taken), techs ${civs.sumOf { it.tech.techsResearched.size }}"
+    }
 
 private fun onGameThread(block: () -> Unit) {
     gameThread.executor.let { (it as java.util.concurrent.ExecutorService).submit(block).get() }
