@@ -89,13 +89,12 @@ object HeadTowardsEnemyCityAutomation {
             return true
         }
 
-        val ourUnitsAroundEnemyCity = closestReachableEnemyCity.getTilesInDistance(6)
-            .flatMap { it.getUnits() }
-            .filter { it.isMilitary() && it.civ == unit.civ }
+        // Allies' units besiege with ours
+        val ourUnitsAroundEnemyCity = AlliedMilitaryAutomation.friendlyMilitaryAround(closestReachableEnemyCity, unit.civ, 6)
 
         val city = closestReachableEnemyCity.getCity()!!
 
-        if (cannotTakeCitySoon(ourUnitsAroundEnemyCity, city)) {
+        if (cannotTakeCitySoon(ourUnitsAroundEnemyCity, city, AlliedMilitaryAutomation.maxSiegeTurns(unit.civ))) {
             return headToLandingGrounds(closestReachableEnemyCity, unitView)
         }
 
@@ -104,11 +103,12 @@ object HeadTowardsEnemyCityAutomation {
         return true
     }
 
-    /** Cannot take within 5 turns */
+    /** Cannot take within [maxTurns] turns */
     @Readonly
     private fun cannotTakeCitySoon(
         ourUnitsAroundEnemyCity: Sequence<MapUnit>,
-        city: City
+        city: City,
+        maxTurns: Float
     ): Boolean {
         val cityCombatant = CityCombatant(city)
         val expectedDamagePerTurn = ourUnitsAroundEnemyCity
@@ -117,7 +117,7 @@ object HeadTowardsEnemyCityAutomation {
         val cityHealingPerTurn = 20
         return expectedDamagePerTurn < city.health && // Cannot take immediately
             (expectedDamagePerTurn <= cityHealingPerTurn // No lasting damage
-                || city.health / (expectedDamagePerTurn - cityHealingPerTurn) > 5) // Can damage, but will take more than 5 turns
+                || city.health / (expectedDamagePerTurn - cityHealingPerTurn) > maxTurns) // Can damage, but will take too long
     }
 
     private fun headToLandingGrounds(closestReachableEnemyCity: Tile, unitView: MapUnitView): Boolean {

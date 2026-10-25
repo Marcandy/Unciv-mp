@@ -562,8 +562,24 @@ object UnitAutomation {
 
         if (reachableTileNearSiegedCity != null) {
             unitView.tryHeadTowards(reachableTileNearSiegedCity)
+            return !unitView.hasMovement()
         }
-        return !unitView.hasMovement()
+        return tryHelpAlliedCityUnderAttack(unitView)
+    }
+
+    /** A defensive pact partner's city nearby is being attacked: go help, if our own cities are safe. */
+    private fun tryHelpAlliedCityUnderAttack(unitView: MapUnitView): Boolean {
+        val unit = unitView.getUnit()
+        for (city in AlliedMilitaryAutomation.alliedCitiesUnderAttack(unit)) {
+            if (city.getCenterTile().aerialDistanceTo(unit.getTile()) <= 2) return false // already there: fight
+            val tile = city.getCenterTile().getTilesInDistance(2)
+                .sortedBy { it.aerialDistanceTo(unit.getTile()) }
+                .firstOrNull { unit.movement.canMoveTo(it) && unit.movement.canReach(it) && unit.getDamageFromTerrain(it) <= 0 }
+                ?: continue
+            unit.movement.headTowards(tile)
+            return !unitView.hasMovement()
+        }
+        return false
     }
 
 
