@@ -15,7 +15,7 @@ val DEFAULT_TEAMS: Map<String, List<String>> = linkedMapOf(
 @Serializable
 data class CreateGameRequest(
     val mapSize: String = "Huge",
-    val cityStates: Int = 8,
+    val cityStates: Int = 4,
     /** Fixed teams: teammates are permanently at peace, teams are permanently at war. */
     val teams: Map<String, List<String>> = DEFAULT_TEAMS,
     /** Seats played through the API (humans or bots). Every other civ is Unciv AI. */
@@ -24,7 +24,7 @@ data class CreateGameRequest(
     val difficulty: String = "Prince",
     val turnTimer: TurnTimer = TurnTimer(),
     /** Teams are at peace (fixed, no war possible) until this turn; 0 = at war from the start. */
-    val warFromTurn: Int = 30,
+    val warFromTurn: Int = 20,
     /** False = Unciv's normal free diplomacy, teams only label civs (used as the bench control). */
     val fixedTeams: Boolean = true,
 ) {

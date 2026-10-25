@@ -37,7 +37,7 @@ from `mpserver/data/games/` on boot.
 - an in-memory extension mod `MP Fixed Teams` carrying the `Diplomatic relationships cannot change`
   mod option, listed in `GameParameters.mods` so every reload rebuilds it. Unciv's AI then never declares
   war or offers peace, and trade logic drops war/peace offers;
-- at game start all majors meet; teammates are at peace; the teams go to war at `warFromTurn` (default 30: with war from turn 0 the AI barely expands);
+- at game start all majors meet; teammates are at peace; the teams go to war at `warFromTurn` (default 20; the default map has 4 city-states to leave room for 16 majors);
 - a team wins when every enemy major is gone or it holds every enemy original capital; Unciv's own
   victories (science, culture, diplomacy, time) count for the winner's team.
 
