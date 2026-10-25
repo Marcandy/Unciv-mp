@@ -256,6 +256,7 @@ private fun bench(args: List<String>) {
         println("bench: $mapSize (${host.game.tileMap.tileList.size} tiles), ${request.teams.values.sumOf { it.size }} majors, " +
             "${request.cityStates} city-states, seed ${request.seed}, ${if (request.groupedStarts) "grouped" else "mixed"} starts, " + if (request.fixedTeams) "fixed teams, war from turn ${request.warFromTurn}" else "vanilla diplomacy")
         for ((team, nations) in host.request.teams) println("  $team: ${nations.joinToString()}")
+        println("  city-states: " + host.game.civilizations.filter { it.isCityState }.joinToString { cs -> cs.civName + " " + (cs.cities.firstOrNull()?.getCenterTile()?.position ?: "-") })
         val starts = host.game.civilizations.filter { it.isMajorCiv() }.associateWith { it.units.getCivUnits().first().getTile() }
         val toEnemy = starts.map { (civ, tile) -> starts.filter { (o, _) -> TeamRules.teamOf(host.request.teams, o.civName) != TeamRules.teamOf(host.request.teams, civ.civName) }
             .values.minOf { it.aerialDistanceTo(tile) } }.sorted()
@@ -289,6 +290,8 @@ private fun teamSnapshot(host: GameHost): String = "turn %3d  ".format(host.game
         val civs = host.game.civilizations.filter { it.civName in nations }
         val captured = civs.flatMap { it.cities }.count { it.foundingCivObject != null && it.foundingCivObject!!.civName !in nations }
         "$team: ${civs.count { it.isAlive() }}/${civs.size} alive, ${civs.sumOf { it.cities.size }} cities ($captured taken), techs ${civs.sumOf { it.tech.techsResearched.size }}"
+    } + "  CS: " + host.game.getCities().filter { it.foundingCivObject?.isCityState == true }.joinToString(" ") { city ->
+        "${city.name}=" + (TeamRules.teamOf(host.request.teams, city.civ.civName) ?: if (city.civ.isCityState) "free" else city.civ.civName)
     }
 
 private fun onGameThread(block: () -> Unit) {

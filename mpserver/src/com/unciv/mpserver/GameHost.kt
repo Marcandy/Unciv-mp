@@ -123,6 +123,7 @@ class GameHost private constructor(
         val game = GameStarter.startNewGame(GameSetupInfo(params, mapParams))
         UncivGame.Current.gameInfo = game
         if (request.groupedStarts) TeamRules.groupStarts(game, request.teams, request.seed)
+        if (request.contestedCityStates) TeamRules.placeContestedCityStates(game, request.teams, request.seed)
         if (request.fixedTeams) TeamRules.applyAtStart(game, request.teams, atWar = request.warFromTurn <= 0)
         return game
     }

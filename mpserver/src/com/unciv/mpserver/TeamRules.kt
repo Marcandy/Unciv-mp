@@ -13,6 +13,7 @@ import com.unciv.logic.trade.TradeOffer
 import com.unciv.logic.trade.TradeOfferType
 import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.RulesetCache
+import com.unciv.models.ruleset.tile.ResourceType
 import com.unciv.models.ruleset.unique.UniqueType
 import kotlin.random.Random
 
@@ -67,10 +68,7 @@ object TeamRules {
      */
     fun groupStarts(game: GameInfo, teams: Map<String, List<String>>, seed: Long) {
         val majors = game.civilizations.filter { it.isMajorCiv() && teamOf(teams, it.civName) != null }
-        val startOf = majors.associateWith { civ ->
-            val units = civ.units.getCivUnits().toList()
-            (units.firstOrNull { it.hasUnique(UniqueType.FoundCity) } ?: units.first()).getTile()
-        }
+        val startOf = majors.associateWith { startTile(it) }
         val world = startOf.values.associateWith { HexMath.hex2WorldCoords(it.position) }
         val xSpread = world.values.maxOf { it.x } - world.values.minOf { it.x }
         val ySpread = world.values.maxOf { it.y } - world.values.minOf { it.y }
@@ -94,6 +92,75 @@ object TeamRules {
             for (tile in game.tileMap.tileList) if (tile.isExplored(civ)) tile.setExplored(civ, false)
             civ.cache.updateViewableTiles()
         }
+    }
+
+    /**
+     * City-states as shared objectives: founded on the line between the two teams' halves, spread evenly along it,
+     * with radius-2 borders full of luxury and strategic resources, and at war with every major civ forever.
+     * Whoever takes and holds one gets those resources. Run after [groupStarts], before turn 0 is played.
+     */
+    fun placeContestedCityStates(game: GameInfo, teams: Map<String, List<String>>, seed: Long) {
+        val cityStates = game.civilizations.filter { it.isCityState && it.units.getCivUnits().any() }
+        if (cityStates.isEmpty() || teams.size != 2) return
+        val rng = Random(seed + 7)
+        val majors = game.civilizations.filter { it.isMajorCiv() && teamOf(teams, it.civName) != null }
+        val starts = majors.associateWith { HexMath.hex2WorldCoords(startTile(it).position) }
+
+        // The front: halfway between the two teams along the axis they were split on
+        val xSpread = starts.values.maxOf { it.x } - starts.values.minOf { it.x }
+        val ySpread = starts.values.maxOf { it.y } - starts.values.minOf { it.y }
+        val alongSplit = { v: com.badlogic.gdx.math.Vector2 -> if (xSpread >= ySpread) v.x else v.y }
+        val across = { v: com.badlogic.gdx.math.Vector2 -> if (xSpread >= ySpread) v.y else v.x }
+        val (teamA, teamB) = teams.keys.toList()
+        val aSide = starts.filterKeys { teamOf(teams, it.civName) == teamA }.values.map(alongSplit)
+        val bSide = starts.filterKeys { teamOf(teams, it.civName) == teamB }.values.map(alongSplit)
+        val front = if (aSide.average() < bSide.average()) (aSide.max() + bSide.min()) / 2 else (bSide.max() + aSide.min()) / 2
+
+        val land = game.tileMap.tileList.filter { it.isLand && !it.isImpassible() && it.getUnits().none() && it.naturalWonder == null }
+        val world = land.associateWith { HexMath.hex2WorldCoords(it.position) }
+        val acrossMin = world.values.minOf(across)
+        val acrossMax = world.values.maxOf(across)
+        val startTiles = majors.map { startTile(it) }
+        val chosen = ArrayList<Tile>()
+        for ((i, cs) in cityStates.withIndex()) {
+            val target = acrossMin + (acrossMax - acrossMin) * (i + 1) / (cityStates.size + 1)
+            val site = land
+                .filter { t -> startTiles.none { it.aerialDistanceTo(t) < 6 } && chosen.none { it.aerialDistanceTo(t) < 8 } }
+                .minByOrNull { t -> val w = world[t]!!; Math.abs(alongSplit(w) - front) + Math.abs(across(w) - target) }
+                ?: continue
+            chosen += site
+            val keep = cs.units.getCivUnits().filter { !it.hasUnique(UniqueType.FoundCity) }.map { it.name }.toList()
+            cs.units.getCivUnits().toList().forEach { it.destroy() }
+            val city = cs.addCity(site.position)
+            for (tile in site.getTilesInDistance(2)) if (tile.getOwner() == null) city.expansion.takeOwnership(tile)
+            for (name in keep) cs.units.placeUnitNearTile(site.position, name)
+            addRichResources(game, site, rng)
+            for (major in majors) {
+                if (!cs.knows(major)) cs.diplomacyFunctions.makeCivilizationsMeet(major, warOnContact = true)
+                setStatus(cs, major, DiplomaticStatus.War)
+            }
+            cs.cache.updateViewableTiles()
+        }
+        majors.forEach { it.popupAlerts.clear() }
+    }
+
+    /** Up to 6 luxury/strategic resources on suitable tiles within 2 of the city, strategic ones as major deposits. */
+    private fun addRichResources(game: GameInfo, center: Tile, rng: Random) {
+        val pool = game.ruleset.tileResources.values.filter { it.resourceType == ResourceType.Luxury || it.resourceType == ResourceType.Strategic }
+        var placed = 0
+        for (tile in center.getTilesInDistance(2).filter { it != center && it.resource == null && it.isLand }.shuffled(rng)) {
+            if (placed >= 6) break
+            val options = pool.filter { it.generatesNaturallyOn(tile) }
+            if (options.isEmpty()) continue
+            tile.setTileResource(options.random(rng), majorDeposit = true)
+            placed++
+        }
+    }
+
+    private fun startTile(civ: Civilization): Tile {
+        civ.cities.firstOrNull()?.let { return it.getCenterTile() }
+        val units = civ.units.getCivUnits().toList()
+        return (units.firstOrNull { it.hasUnique(UniqueType.FoundCity) } ?: units.first()).getTile()
     }
 
     /**

@@ -2,6 +2,7 @@ package com.unciv.mpserver
 
 import com.unciv.logic.civilization.diplomacy.DiplomaticStatus
 import com.unciv.logic.map.HexMath
+import com.unciv.models.ruleset.tile.ResourceType
 import com.unciv.models.ruleset.unique.UniqueType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -74,6 +75,25 @@ class RoundTest {
             assertEquals(listOf(2, 2), r.values.map { it.size })
         }
         assertTrue(rosters[0] != rosters[1])
+    }
+
+    @Test fun cityStatesSitBetweenTheTeamsRichAndAtWarWithEveryone() {
+        val host = GameHost.create("cs", CreateGameRequest(mapSize = "Small", cityStates = 2, teams = teams,
+            externalSeats = listOf("America", "Germany"), seed = 11, randomLeaders = false), dataDir)
+        val cityStates = host.game.civilizations.filter { it.isCityState }
+        assertEquals(2, cityStates.size)
+        val majors = host.game.civilizations.filter { it.isMajorCiv() }
+        for (cs in cityStates) {
+            val city = cs.cities.single()
+            for (major in majors) assertEquals(DiplomaticStatus.War, cs.getDiplomacyManager(major)!!.diplomaticStatus)
+            val rich = city.getCenterTile().getTilesInDistance(2).count { it.tileResource?.resourceType.let { t ->
+                t == ResourceType.Luxury || t == ResourceType.Strategic } }
+            assertTrue("only $rich rich tiles near ${city.name}", rich >= 3)
+            // Closer to the middle than to either team's capital area: each team has a start at least as far away as the other's nearest
+            val nearestByTeam = teams.mapValues { (_, names) -> majors.filter { it.civName in names }
+                .minOf { it.units.getCivUnits().first().getTile().aerialDistanceTo(city.getCenterTile()) } }
+            assertTrue("city-state ${city.name} not between teams: $nearestByTeam", nearestByTeam.values.all { it >= 4 })
+        }
     }
 
     @Test fun diplomacyIntentsAreRejected() {
