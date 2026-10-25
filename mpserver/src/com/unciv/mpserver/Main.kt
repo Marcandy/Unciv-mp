@@ -239,7 +239,7 @@ private fun restoreLatest(): GameHost? {
 
 /**
  * 8v8 timing + AI sanity benchmark, all 16 civs Unciv AI (worst case for server time per round):
- * `./gradlew :mpserver:run -PserverArgs="bench <mapSize> <turns> [warFromTurn|vanilla] [cityStates] [seed]"`.
+ * `./gradlew :mpserver:run -PserverArgs="bench <mapSize> <turns> [warFromTurn|vanilla] [cityStates] [seed] [grouped|mixed]"`.
  * "vanilla" keeps Unciv's free diplomacy (teams are only labels), as a control.
  */
 private fun bench(args: List<String>) {
@@ -249,12 +249,16 @@ private fun bench(args: List<String>) {
     val defaults = CreateGameRequest()
     val request = defaults.copy(mapSize = mapSize, externalSeats = emptyList(), fixedTeams = mode != "vanilla",
         warFromTurn = mode?.toIntOrNull() ?: defaults.warFromTurn, cityStates = args.getOrNull(3)?.toIntOrNull() ?: defaults.cityStates,
-        seed = args.getOrNull(4)?.toLongOrNull() ?: defaults.seed)
+        seed = args.getOrNull(4)?.toLongOrNull() ?: defaults.seed, groupedStarts = args.getOrNull(5) != "mixed")
     val dir = File(System.getProperty("java.io.tmpdir"), "mpserver-bench").apply { deleteRecursively() }
     onGameThread {
         val host = GameHost.create("bench", request, dir)
         println("bench: $mapSize (${host.game.tileMap.tileList.size} tiles), ${request.teams.values.sumOf { it.size }} majors, " +
-            "${request.cityStates} city-states, seed ${request.seed}, " + if (request.fixedTeams) "fixed teams, war from turn ${request.warFromTurn}" else "vanilla diplomacy")
+            "${request.cityStates} city-states, seed ${request.seed}, ${if (request.groupedStarts) "grouped" else "mixed"} starts, " + if (request.fixedTeams) "fixed teams, war from turn ${request.warFromTurn}" else "vanilla diplomacy")
+        val starts = host.game.civilizations.filter { it.isMajorCiv() }.associateWith { it.units.getCivUnits().first().getTile() }
+        val toEnemy = starts.map { (civ, tile) -> starts.filter { (o, _) -> TeamRules.teamOf(request.teams, o.civName) != TeamRules.teamOf(request.teams, civ.civName) }
+            .values.minOf { it.aerialDistanceTo(tile) } }.sorted()
+        println("start -> nearest enemy start: min ${toEnemy.first()}, median ${toEnemy[toEnemy.size / 2]}, max ${toEnemy.last()} tiles")
         val roundMs = ArrayList<Long>()
         // One round at a time, so checkpoints see the world as it was at that turn
         for (r in (1..turns).asSequence().flatMap { host.autoplay(1) }) {

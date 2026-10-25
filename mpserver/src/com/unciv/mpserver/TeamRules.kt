@@ -6,12 +6,15 @@ import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.civilization.NotificationCategory
 import com.unciv.logic.civilization.NotificationIcon
 import com.unciv.logic.civilization.diplomacy.DiplomaticStatus
+import com.unciv.logic.map.HexMath
+import com.unciv.logic.map.tile.Tile
 import com.unciv.logic.trade.Trade
 import com.unciv.logic.trade.TradeOffer
 import com.unciv.logic.trade.TradeOfferType
 import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.RulesetCache
 import com.unciv.models.ruleset.unique.UniqueType
+import kotlin.random.Random
 
 /**
  * Fixed teams (e.g. Axis vs Allies) built mostly from what Unciv already has:
@@ -51,6 +54,46 @@ object TeamRules {
         }
         // First-contact popups are noise in a team game where everyone is introduced at once
         majors.forEach { it.popupAlerts.clear() }
+    }
+
+    /**
+     * Each team starts on its own half of the map, so there is one front and a safe rear.
+     *
+     * Unciv's GameStarter knows nothing about teams: it spreads all starts evenly and assigns them at random,
+     * which interleaves the teams (median capital ~9 tiles from the nearest enemy city on Huge). This keeps
+     * GameStarter's start tiles, splits them at the median along the map's wider axis, and gives each team one
+     * half (which team gets which half comes from [seed]). Run before turn 0 is played: only starting units exist.
+     * Start biases (coast, tundra...) are not re-applied to the swapped tiles.
+     */
+    fun groupStarts(game: GameInfo, teams: Map<String, List<String>>, seed: Long) {
+        val majors = game.civilizations.filter { it.isMajorCiv() && teamOf(teams, it.civName) != null }
+        val startOf = majors.associateWith { civ ->
+            val units = civ.units.getCivUnits().toList()
+            (units.firstOrNull { it.hasUnique(UniqueType.FoundCity) } ?: units.first()).getTile()
+        }
+        val world = startOf.values.associateWith { HexMath.hex2WorldCoords(it.position) }
+        val xSpread = world.values.maxOf { it.x } - world.values.minOf { it.x }
+        val ySpread = world.values.maxOf { it.y } - world.values.minOf { it.y }
+        val sorted = startOf.values.sortedBy { if (xSpread >= ySpread) world[it]!!.x else world[it]!!.y }
+
+        val rng = Random(seed)
+        val teamOrder = teams.keys.shuffled(rng)
+        val newStart = HashMap<Civilization, Tile>()
+        var next = 0
+        for (team in teamOrder) {
+            val members = majors.filter { teamOf(teams, it.civName) == team }.shuffled(rng)
+            for (civ in members) newStart[civ] = sorted[next++]
+        }
+
+        // Lift every major's starting units first, so nobody is blocked by a unit that is about to move away
+        val unitNames = majors.associateWith { civ -> civ.units.getCivUnits().map { it.name }.toList() }
+        for (civ in majors) civ.units.getCivUnits().toList().forEach { it.destroy() }
+        for (civ in majors) {
+            for (name in unitNames[civ]!!) civ.units.placeUnitNearTile(newStart[civ]!!.position, name)
+            // Forget what was seen from the old start
+            for (tile in game.tileMap.tileList) if (tile.isExplored(civ)) tile.setExplored(civ, false)
+            civ.cache.updateViewableTiles()
+        }
     }
 
     /** End of the peace period: every pair of majors on different teams goes to war. */

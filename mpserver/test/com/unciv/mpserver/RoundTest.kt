@@ -1,6 +1,7 @@
 package com.unciv.mpserver
 
 import com.unciv.logic.civilization.diplomacy.DiplomaticStatus
+import com.unciv.logic.map.HexMath
 import com.unciv.models.ruleset.unique.UniqueType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -46,6 +47,19 @@ class RoundTest {
         assertEquals(2, host.game.turns)
         assertEquals(DiplomaticStatus.War, america.getDiplomacyManager(germany)!!.diplomaticStatus)
         assertEquals(DiplomaticStatus.DefensivePact, america.getDiplomacyManager(host.civ("England")!!)!!.diplomaticStatus)
+    }
+
+    @Test fun groupedStartsPutEachTeamOnItsOwnHalf() {
+        val host = newHost()
+        val starts = host.game.civilizations.filter { it.isMajorCiv() }.associate { civ ->
+            civ.civName to HexMath.hex2WorldCoords(civ.units.getCivUnits().first { it.hasUnique(UniqueType.FoundCity) }.getTile().position)
+        }
+        val xSpread = starts.values.maxOf { it.x } - starts.values.minOf { it.x }
+        val ySpread = starts.values.maxOf { it.y } - starts.values.minOf { it.y }
+        val axis = { name: String -> starts[name]!!.let { if (xSpread >= ySpread) it.x else it.y } }
+        val allies = teams["Allies"]!!.map(axis)
+        val axisTeam = teams["Axis"]!!.map(axis)
+        assertTrue("teams overlap: $allies vs $axisTeam", allies.max() <= axisTeam.min() || axisTeam.max() <= allies.min())
     }
 
     @Test fun diplomacyIntentsAreRejected() {

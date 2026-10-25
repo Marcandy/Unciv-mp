@@ -27,6 +27,8 @@ data class CreateGameRequest(
     val warFromTurn: Int = 20,
     /** False = Unciv's normal free diplomacy, teams only label civs (used as the bench control). */
     val fixedTeams: Boolean = true,
+    /** Each team starts on its own half of the map (false = Unciv's random, interleaved starts). */
+    val groupedStarts: Boolean = true,
 ) {
     fun problems(): List<String> = buildList {
         val nations = teams.values.flatten()
