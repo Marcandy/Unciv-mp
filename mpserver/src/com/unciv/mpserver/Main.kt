@@ -255,8 +255,9 @@ private fun bench(args: List<String>) {
         val host = GameHost.create("bench", request, dir)
         println("bench: $mapSize (${host.game.tileMap.tileList.size} tiles), ${request.teams.values.sumOf { it.size }} majors, " +
             "${request.cityStates} city-states, seed ${request.seed}, ${if (request.groupedStarts) "grouped" else "mixed"} starts, " + if (request.fixedTeams) "fixed teams, war from turn ${request.warFromTurn}" else "vanilla diplomacy")
+        for ((team, nations) in host.request.teams) println("  $team: ${nations.joinToString()}")
         val starts = host.game.civilizations.filter { it.isMajorCiv() }.associateWith { it.units.getCivUnits().first().getTile() }
-        val toEnemy = starts.map { (civ, tile) -> starts.filter { (o, _) -> TeamRules.teamOf(request.teams, o.civName) != TeamRules.teamOf(request.teams, civ.civName) }
+        val toEnemy = starts.map { (civ, tile) -> starts.filter { (o, _) -> TeamRules.teamOf(host.request.teams, o.civName) != TeamRules.teamOf(host.request.teams, civ.civName) }
             .values.minOf { it.aerialDistanceTo(tile) } }.sorted()
         println("start -> nearest enemy start: min ${toEnemy.first()}, median ${toEnemy[toEnemy.size / 2]}, max ${toEnemy.last()} tiles")
         val roundMs = ArrayList<Long>()
@@ -270,7 +271,7 @@ private fun bench(args: List<String>) {
             if (r.winningTeam != null) { println("WINNER at turn ${host.game.turns}: ${r.winningTeam}"); break }
         }
         println("final, per civ:")
-        for ((team, nations) in request.teams) for (civ in host.game.civilizations.filter { it.civName in nations }) {
+        for ((team, nations) in host.request.teams) for (civ in host.game.civilizations.filter { it.civName in nations }) {
             println("  %-6s %-16s %-5s cities %2d (captured %d)  pop %3d  military %3d".format(team, civ.civName,
                 if (civ.isAlive()) "" else "DEAD", civ.cities.size, civ.cities.count { it.foundingCivObject != civ },
                 civ.cities.sumOf { it.population.population }, civ.units.getCivUnits().count { it.isMilitary() }))

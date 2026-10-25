@@ -96,6 +96,18 @@ object TeamRules {
         }
     }
 
+    /**
+     * Random leaders: each team keeps its external (human) seats and fills its other slots with random major
+     * nations from the ruleset, drawn with [seed]. Team names and sizes come from [teams].
+     */
+    fun randomizeTeams(teams: Map<String, List<String>>, keep: Collection<String>, majorNations: List<String>, seed: Long): Map<String, List<String>> {
+        val pool = majorNations.filter { it !in keep }.shuffled(Random(seed + 13)).toMutableList()
+        return teams.mapValuesTo(LinkedHashMap()) { (_, nations) ->
+            val seats = nations.filter { it in keep }
+            seats + List(nations.size - seats.size) { pool.removeAt(0) }
+        }
+    }
+
     /** End of the peace period: every pair of majors on different teams goes to war. */
     fun startWar(game: GameInfo, teams: Map<String, List<String>>) {
         val majors = game.civilizations.filter { it.isMajorCiv() }

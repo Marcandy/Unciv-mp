@@ -29,6 +29,8 @@ data class CreateGameRequest(
     val fixedTeams: Boolean = true,
     /** Each team starts on its own half of the map (false = Unciv's random, interleaved starts). */
     val groupedStarts: Boolean = true,
+    /** Fill every non-seat slot with a random major nation (seeded); team names and sizes come from [teams]. */
+    val randomLeaders: Boolean = true,
 ) {
     fun problems(): List<String> = buildList {
         val nations = teams.values.flatten()

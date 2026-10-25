@@ -24,7 +24,8 @@ class RoundTest {
     private val dataDir: File = Files.createTempDirectory("mpserver-test").toFile()
 
     private fun newHost(seats: List<String> = listOf("America", "Germany"), warFromTurn: Int = 0) = GameHost.create(
-        "t", CreateGameRequest(mapSize = "Tiny", cityStates = 2, teams = teams, externalSeats = seats, seed = 3, warFromTurn = warFromTurn), dataDir
+        "t", CreateGameRequest(mapSize = "Tiny", cityStates = 2, teams = teams, externalSeats = seats, seed = 3, warFromTurn = warFromTurn,
+            randomLeaders = false), dataDir
     )
 
     @Test fun teamsArePermanentAlliesAndEnemies() {
@@ -60,6 +61,19 @@ class RoundTest {
         val allies = teams["Allies"]!!.map(axis)
         val axisTeam = teams["Axis"]!!.map(axis)
         assertTrue("teams overlap: $allies vs $axisTeam", allies.max() <= axisTeam.min() || axisTeam.max() <= allies.min())
+    }
+
+    @Test fun randomLeadersKeepSeatsAndDifferBySeed() {
+        val rosters = listOf(5L, 6L).map { seed ->
+            GameHost.create("r$seed", CreateGameRequest(mapSize = "Tiny", cityStates = 0, teams = teams,
+                externalSeats = listOf("America"), seed = seed), dataDir).request.teams
+        }
+        for (r in rosters) {
+            assertTrue("America" in r["Allies"]!!)
+            assertEquals(4, r.values.flatten().toSet().size)
+            assertEquals(listOf(2, 2), r.values.map { it.size })
+        }
+        assertTrue(rosters[0] != rosters[1])
     }
 
     @Test fun diplomacyIntentsAreRejected() {

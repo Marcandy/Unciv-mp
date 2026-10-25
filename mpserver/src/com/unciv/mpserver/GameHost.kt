@@ -69,7 +69,10 @@ class GameHost private constructor(
     companion object {
         const val MAX_PLAN = 500
 
-        fun create(gameId: String, request: CreateGameRequest, dataDir: File): GameHost {
+        fun create(gameId: String, requested: CreateGameRequest, dataDir: File): GameHost {
+            val request = if (!requested.randomLeaders) requested else requested.copy(teams = TeamRules.randomizeTeams(
+                requested.teams, requested.externalSeats,
+                RulesetCache[BaseRuleset.Civ_V_GnK.fullName]!!.nations.values.filter { it.isMajorCiv }.map { it.name }, requested.seed))
             val seats = request.externalSeats.associateWith { Seat(it, UUID.randomUUID().toString(), TeamRules.teamOf(request.teams, it)) }
             val host = GameHost(gameId, request, GameStore(File(dataDir, gameId)), seats)
             host.game = host.startGame()
