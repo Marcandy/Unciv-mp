@@ -4,6 +4,7 @@ This is Marc's fork of yairm210/Unciv (base commit `fce8c98`, 23 Oct 2026), bran
 Goal (MVP, decided 25 Oct 2026): server-authoritative 8v8 fixed-team games (Allies vs Axis) on Android and iOS,
 where no player waits long: Plan & Commit rounds with a turn timer, AI plays late or absent seats.
 LLM agent seats exist but are not part of the MVP.
+Local dev diary (gitignored): `mpserver/DEV-DIARY.md`; add an entry for every important bug and its root cause.
 Planning docs live in Google Drive, folder "Unciv Multiplayer Project" (start with `00-README-START-HERE.md`;
 current plan is `Unciv-Multiplayer-Architecture-v3.md`). Detailed module docs: `mpserver/README.md`.
 
