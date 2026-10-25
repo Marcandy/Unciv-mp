@@ -250,7 +250,8 @@ private fun bench(args: List<String>) {
     val request = defaults.copy(mapSize = mapSize, externalSeats = emptyList(), fixedTeams = mode != "vanilla",
         warFromTurn = mode?.toIntOrNull() ?: defaults.warFromTurn, cityStates = args.getOrNull(3)?.toIntOrNull() ?: defaults.cityStates,
         seed = args.getOrNull(4)?.toLongOrNull() ?: defaults.seed, groupedStarts = args.getOrNull(5) != "mixed")
-    val dir = File(System.getProperty("java.io.tmpdir"), "mpserver-bench").apply { deleteRecursively() }
+    // Per seed, so several benches can run in parallel
+    val dir = File(System.getProperty("java.io.tmpdir"), "mpserver-bench-${request.seed}").apply { deleteRecursively() }
     onGameThread {
         val host = GameHost.create("bench", request, dir)
         println("bench: $mapSize (${host.game.tileMap.tileList.size} tiles), ${request.teams.values.sumOf { it.size }} majors, " +
