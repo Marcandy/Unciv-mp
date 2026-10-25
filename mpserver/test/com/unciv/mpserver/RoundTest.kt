@@ -88,6 +88,28 @@ class RoundTest {
         assertTrue(rosters[0] != rosters[1])
     }
 
+    @Test fun overextendedLeaderPaysAndCapturesFromItEarnBounties() {
+        val host = newHost()
+        host.autoplay(2)
+        val (america, england, germany, japan) = listOf("America", "England", "Germany", "Japan").map { host.civ(it)!! }
+        assertTrue(listOf(america, england, germany, japan).all { it.cities.size == 1 })
+        england.cities.first().moveToCiv(germany) // Axis now holds 3 of 4 cities
+        val americaCity = america.cities.first()
+        val before = CatchUp.owners(host.game) + (americaCity.location to "Japan") // as if America just took it from Japan
+        val goldBefore = america.gold
+
+        val log = CatchUp.apply(host.game, teams, before)
+
+        val penalty = { civ: com.unciv.logic.civilization.Civilization -> civ.temporaryUniques.map { it.unique }.filter { it.startsWith("[-") } }
+        assertEquals(listOf("[-25]% [Production] [in all cities]"), penalty(germany))
+        assertEquals(1, penalty(japan).size)
+        assertTrue(penalty(america).isEmpty())
+        assertEquals(100 + 2 * host.game.turns, america.gold - goldBefore)
+        assertTrue(america.temporaryUniques.any { it.unique == "[+20]% [Production] [in all cities]" && it.turnsLeft == 5 })
+        assertTrue(england.temporaryUniques.none { it.unique.startsWith("[+20]%") }) // no cities left: out of the game
+        assertEquals(3, log.size)
+    }
+
     @Test fun cityStatesSitBetweenTheTeamsRichAndAtWarWithEveryone() {
         val host = GameHost.create("cs", CreateGameRequest(mapSize = "Small", cityStates = 2, teams = teams,
             externalSeats = listOf("America", "Germany"), seed = 11, randomLeaders = false), dataDir)

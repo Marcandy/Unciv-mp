@@ -57,6 +57,8 @@ class GameHost private constructor(
     private var roundOpenedAt = System.currentTimeMillis()
     private var paused = true
     private var events: Map<String, List<String>> = emptyMap()
+    /** Every overextension and bounty applied so far (not persisted; for benches and logs). */
+    val catchUpLog = ArrayList<String>()
     private val frames = ArrayList<ReplayFrame>()
     private var lastResult: RoundResult? = null
     var winningTeam: String? = null
@@ -220,6 +222,7 @@ class GameHost private constructor(
         var seatMs = 0L
         var aiMs = 0L
 
+        val ownersBefore = CatchUp.owners(game)
         val totalMs = timed {
             RoundEngine.resolve(game, order) { civ ->
                 val seat = seats[civ.civName]
@@ -243,6 +246,8 @@ class GameHost private constructor(
                 }
             }
             if (request.fixedTeams && game.turns == request.warFromTurn) TeamRules.startWar(game, request.teams)
+            if (request.fixedTeams && request.catchUp && game.turns > request.warFromTurn)
+                catchUpLog += CatchUp.apply(game, request.teams, ownersBefore)
         }
 
         var saveBytes = 0

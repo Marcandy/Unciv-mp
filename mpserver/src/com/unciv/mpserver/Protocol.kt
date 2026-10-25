@@ -33,6 +33,11 @@ data class CreateGameRequest(
     val contestedCityStates: Boolean = true,
     /** Fill every non-seat slot with a random major nation (seeded); team names and sizes come from [teams]. */
     val randomLeaders: Boolean = true,
+    /**
+     * Anti-snowball once the war is on: an overextended leading team loses production, captures from it pay a bounty ([CatchUp]).
+     * Off by default until it is measured over many seeds.
+     */
+    val catchUp: Boolean = false,
 ) {
     fun problems(): List<String> = buildList {
         val nations = teams.values.flatten()
