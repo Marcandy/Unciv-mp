@@ -9,6 +9,7 @@ import com.unciv.UncivGame
 import com.unciv.logic.automation.Automation
 import com.unciv.logic.automation.ThreatLevel
 import com.unciv.logic.automation.Timers.Companion.timeThis
+import com.unciv.logic.automation.unit.AlliedMilitaryAutomation
 import com.unciv.logic.automation.unit.CivilianUnitAutomation
 import com.unciv.logic.automation.unit.EspionageAutomation
 import com.unciv.logic.automation.unit.UnitAutomation
@@ -32,7 +33,6 @@ import com.unciv.models.ruleset.unique.GameContext
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.ruleset.unit.BaseUnit
 import com.unciv.models.stats.Stat
-import com.unciv.ui.screens.victoryscreen.RankingType
 import com.unciv.utils.randomWeighted
 import com.unciv.view.CivView
 import com.unciv.view.GameView
@@ -610,19 +610,14 @@ object NextTurnAutomation {
 
     fun automateCities(civView: CivView) {
         val civInfo = civView.getCiv()
-        val ownMilitaryStrength = civInfo.getStatForRanking(RankingType.Force)
-        val sumOfEnemiesMilitaryStrength =
-                civInfo.gameInfo.civilizations
-                    .filter { it != civInfo && !it.isBarbarian && civInfo.isAtWarWith(it) }
-                    .sumOf { it.getStatForRanking(RankingType.Force) }
-        val civHasSignificantlyWeakerMilitaryThanEnemies =
-                ownMilitaryStrength < sumOfEnemiesMilitaryStrength * 0.66f
         for (city in civInfo.cities) {
             if (shouldAnnexCity(civView, city)) city.annexCity()
 
             // Don't pull a city off a spaceship part it's already building for the military push (only if actually attacked)
             val onSpaceshipPart = city.cityConstructions.getCurrentConstruction().name in civInfo.gameInfo.spaceResources
-            if (city.health < city.getMaxHealth() || (civHasSignificantlyWeakerMilitaryThanEnemies && !onSpaceshipPart)) {
+            // Local threat, not "our whole army vs the sum of every enemy's": that comparison is always lost
+            // in multi-front wars and turned every city into a permanent barracks.
+            if (city.health < city.getMaxHealth() || (AlliedMilitaryAutomation.isCityLocallyThreatened(city) && !onSpaceshipPart)) {
                 Automation.tryTrainMilitaryUnit(city) // need defenses if city is under attack
                 if (city.cityConstructions.constructionQueue.isNotEmpty())
                     continue // found a unit to build so move on

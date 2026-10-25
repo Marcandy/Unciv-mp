@@ -149,6 +149,22 @@ project(":server") {
     }
 }
 
+// Authoritative multiplayer + agent server (fork-only module, new files only)
+project(":mpserver") {
+    apply(plugin = "kotlin")
+    apply(plugin = "org.jetbrains.kotlin.plugin.serialization")
+
+    dependencies {
+        "implementation"(project(":core"))
+        "implementation"(rootProject.libs.gdx)
+        "implementation"(rootProject.libs.gdx.backend.headless)
+        "implementation"(gdxNatives("desktop"))
+        "implementation"(rootProject.libs.coroutines.core)
+        "implementation"(rootProject.libs.bundles.ktor.server)
+        "implementation"(rootProject.libs.logback)
+    }
+}
+
 private fun getSdkPath(): String? {
     // See #13566 - Android Studio has moved its primary method to store where to find its SDK
     val localProperties = project.file("local.properties")
