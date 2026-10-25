@@ -119,10 +119,15 @@ class RoundTest {
         assertEquals(1, restored.game.turns)
     }
 
-    @Test fun teamOrderInterleavesTeams() {
+    @Test fun teamOrderInterleavesTeamsAndTheLeadRotates() {
         val host = newHost()
-        val order = RoundEngine.resolutionOrder(host.game, teams, 1).map { it.civName }
-        val teamSeq = order.take(4).map { TeamRules.teamOf(teams, it) }
-        assertEquals(listOf("Allies", "Axis", "Allies", "Axis"), teamSeq)
+        val leaders = (0L until 40L).map { seed ->
+            val teamSeq = RoundEngine.resolutionOrder(host.game, teams, seed).take(4).map { TeamRules.teamOf(teams, it.civName) }
+            assertEquals(teamSeq[0], teamSeq[2])
+            assertEquals(teamSeq[1], teamSeq[3])
+            assertTrue(teamSeq[0] != teamSeq[1])
+            teamSeq[0]
+        }
+        assertEquals(setOf("Allies", "Axis"), leaders.toSet()) // over 40 rounds both teams lead sometimes
     }
 }

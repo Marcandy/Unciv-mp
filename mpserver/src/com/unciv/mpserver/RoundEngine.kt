@@ -19,10 +19,13 @@ import kotlin.random.Random
  */
 object RoundEngine {
 
-    /** Teams interleaved, each shuffled with the round seed (A1, B1, A2, B2, ...), then city-states, then barbarians. */
+    /**
+     * Teams interleaved, each shuffled with the round seed (A1, B1, A2, B2, ...), then city-states, then barbarians.
+     * Which team leads also comes from the seed, so no team moves first every round.
+     */
     fun resolutionOrder(game: GameInfo, teams: Map<String, List<String>>, seed: Long): List<Civilization> {
         val rng = Random(seed)
-        val byTeam = teams.values.map { names -> game.civilizations.filter { it.civName in names }.shuffled(rng) }
+        val byTeam = teams.values.shuffled(rng).map { names -> game.civilizations.filter { it.civName in names }.shuffled(rng) }
         val interleaved = (0 until (byTeam.maxOfOrNull { it.size } ?: 0)).flatMap { i -> byTeam.mapNotNull { it.getOrNull(i) } }
         val rest = game.civilizations.filter { it !in interleaved && !it.isSpectator() }
         return interleaved + rest.filter { !it.isBarbarian }.shuffled(rng) + rest.filter { it.isBarbarian }
