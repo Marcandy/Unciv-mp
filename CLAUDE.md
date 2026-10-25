@@ -66,15 +66,21 @@ dir for CLI runs (init script setting `layout.buildDirectory`) or disable `java.
   cities, personality scales siege commitment (Aggressive) and help radius (Loyal).
 - `useAStarPathfinding` must stay false: the experimental A* never reaches enemy city tiles, so the AI
   found no siege targets (0 captures). Upstream bug worth reporting.
-- Branch not yet pushed. Push target: `marcandy/Unciv` (fork), branch `mpserver-mvp`.
+- Pushed to remote `fork` = `marcandy/unciv-mp` (public fork of Unciv), branch `mpserver-mvp`. `origin` is upstream: never push there.
 - `mpserver/build/` is tracked in git from earlier commits; now gitignored, still needs `git rm -r --cached mpserver/build`.
+
+## Status addendum (25 Oct 2026, night)
+- Defaults: Huge, war at turn 20, 4 city-states, grouped team starts. 11 tests pass.
+- Grouped vs mixed starts, 5 seeds × 250 turns: grouped = +14% cities, 2.4 vs 4.4 civs eliminated, same captures (~14).
+  Axis ahead in 7/10 games: check team composition next. Details in `mpserver/DEV-DIARY.md`.
+- Plans written to Drive: `08-Mobile-Plan-Android-iOS.md`, `09-Architecture-Least-Maintenance-8v8.md`,
+  `10-Release-under-LLC-and-Monetization-Guardrails.md`. Key new fact: Apple rejected Unciv4iOS under 4.3(a) on 28 Sep 2026.
 
 ## Next, in order
 1. Client path for Android/iOS: Stage-1 masked `GameInfo` with `MaskRoundTripTest` + `MaskLeakTest` first;
    client plays the round locally and sends intents. Measure 16 civs / Huge on a mid-range Android phone.
 2. Unit intents (move, attack, found city) validated against explored/visible tiles (`IntentVisibilityTest`).
-3. Team-grouped starting positions (teams are currently interleaved across the map) and a shared
-   team war target, so allies converge on one front.
+3. Team balance (Axis ahead 7/10: swap rosters / random teams), then a shared team war target.
 4. WebSocket push of round results; APNs/FCM push.
 5. Team features: shared vision, team-grouped starting positions, teammate open borders.
 6. Gate 0 on the target VPS.
