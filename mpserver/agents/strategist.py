@@ -125,8 +125,7 @@ def main():
     args = ap.parse_args()
 
     policy = claude_policy if args.policy == "claude" else persona_policy
-    g = create_game(mapSize="Small", majorCivs=4, cityStates=2, externalSeats=["Rome"],
-                    nations=["Rome", "Greece", "Egypt", "China"], seed=7, difficulty="Prince")
+    g = create_game(mapSize="Large", externalSeats=["Rome"], seed=7, difficulty="Prince")  # default 8v8 teams
     seat = Seat(g["gameId"], "Rome", g["Rome"])
     print(f"game {g['gameId']} policy={args.policy}", flush=True)
 
@@ -147,13 +146,15 @@ def main():
             res = seat.submit(intents, reasoning)
             ok = sum(1 for r in res["results"] if r["accepted"])
             print(f"turn {turn}: {reasoning} [{ok}/{len(intents)} accepted, {time.time()-t0:.1f}s]", flush=True)
-        r = seat.end_turn()
-        turn = r["turn"]
-        t = r["timings"]
-        print(f"  -> turn {turn} ai={t['aiMs']}ms seat={t['seatAutomationMs']}ms mask={t['maskMs']}ms "
-              f"save={t['saveMs']}ms load={t['loadMs']} size={t['saveBytes']//1024}KB", flush=True)
-        if r.get("winner"):
-            print("winner:", r["winner"])
+        c = seat.end_turn()
+        r = c["round"] or seat.wait(c["turn"])  # the only present seat, so the commit seals the round
+        turn = seat.view()["turn"]
+        if c["round"]:
+            t = r["timings"]
+            print(f"  -> turn {turn} ai={t['aiMs']}ms seat={t['seatMs']}ms turn={t['turnMs']}ms "
+                  f"save={t['saveMs']}ms size={t['saveBytes']//1024}KB", flush=True)
+        if r.get("winningTeam"):
+            print("winner:", r["winningTeam"])
             break
 
     data = replay(g["gameId"])

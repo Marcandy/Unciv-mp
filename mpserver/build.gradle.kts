@@ -8,6 +8,19 @@ sourceSets {
     main {
         java.srcDir("src/")
     }
+    test {
+        java.srcDir("test/")
+    }
+}
+
+dependencies {
+    testImplementation(libs.junit)
+}
+
+tasks.test {
+    workingDir = file("../android/assets") // the engine loads rulesets relative to the assets folder
+    jvmArgs("-Xmx2g", "-Djava.awt.headless=true")
+    testLogging { events("passed", "failed"); exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
 }
 
 kotlin {

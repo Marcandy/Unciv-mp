@@ -15,7 +15,7 @@ import com.unciv.view.GameView
  */
 object MaskedView {
 
-    fun build(game: GameInfo, civ: Civilization): CivViewDto {
+    fun build(game: GameInfo, civ: Civilization, teamOf: (String) -> String? = { null }): CivViewDto {
         val gv = GameView(game, civ)
         val ruleset = game.ruleset
 
@@ -56,6 +56,7 @@ object MaskedView {
                     civ.getDiplomacyManager(other)?.diplomaticStatus?.name ?: "Unknown",
                     other.isCityState,
                     other.getStatForRanking(RankingType.Score),
+                    teamOf(other.civName),
                 )
             }
 
@@ -84,6 +85,7 @@ object MaskedView {
             techsKnown = civ.tech.techsResearched.size,
             units = civ.units.getCivUnits().groupingBy { it.name }.eachCount(),
             score = civ.getStatForRanking(RankingType.Score),
+            team = teamOf(civ.civName),
         )
 
         return CivViewDto(
@@ -97,7 +99,7 @@ object MaskedView {
     /** Narrated text for LLM seats (lesson from civ6-mcp: models reason better over prose than raw state). */
     fun brief(v: CivViewDto, recentEvents: List<String>): String = buildString {
         val m = v.me
-        appendLine("Turn ${v.turn}. You lead ${m.civ}. Score ${m.score}.")
+        appendLine("Turn ${v.turn}. You lead ${m.civ}${m.team?.let { " ($it)" } ?: ""}. Score ${m.score}.")
         appendLine("Economy: ${m.gold} gold (${signed(m.goldPerTurn)}/turn), science +${m.sciencePerTurn}, culture +${m.culturePerTurn}, happiness ${m.happiness}.")
         appendLine("Research: ${m.researching ?: "nothing"}${m.researchTurns?.let { " ($it turns)" } ?: ""}. Techs known: ${m.techsKnown}.")
         appendLine("Army and workers: " + m.units.entries.joinToString { "${it.value} ${it.key}" }.ifEmpty { "none" } + ".")
@@ -106,7 +108,7 @@ object MaskedView {
         if (v.knownCivs.isEmpty()) appendLine("You have not met anyone yet.")
         else {
             appendLine("Known civilizations:")
-            v.knownCivs.forEach { appendLine("- ${it.civ}${if (it.isCityState) " (city-state)" else ""}: ${it.status}, score ${it.score}") }
+            v.knownCivs.forEach { appendLine("- ${it.civ}${if (it.isCityState) " (city-state)" else ""}${it.team?.let { t -> " [$t]" } ?: ""}: ${it.status}, score ${it.score}") }
         }
         val explored = v.tiles.size
         val visibleEnemies = v.tiles.filter { it.visible && it.unitOwner != null && it.unitOwner != m.civ }
@@ -118,7 +120,7 @@ object MaskedView {
             appendLine("Since your last turn:")
             recentEvents.take(10).forEach { appendLine("- $it") }
         }
-        appendLine("Intents you can submit: research {tech}, build {city,item}, declareWar {target}, note {text}.")
+        appendLine("Intents you can submit: research {tech}, build {city,item}, note {text}. Diplomacy is fixed by team.")
     }
 
     private fun signed(n: Int) = if (n >= 0) "+$n" else "$n"
