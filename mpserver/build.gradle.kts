@@ -42,3 +42,9 @@ tasks.register<JavaExec>("run") {
     jvmArgs("-Xmx2g", "-Djava.awt.headless=true")
     args = (project.findProperty("serverArgs") as String? ?: "").split(" ").filter { it.isNotBlank() }
 }
+
+// For running several benches in parallel without Gradle: java -cp "$(./gradlew -q :mpserver:printClasspath)" ...
+tasks.register("printClasspath") {
+    dependsOn(tasks.getByName("classes"))
+    doLast { println(sourceSets.main.get().runtimeClasspath.asPath) }
+}

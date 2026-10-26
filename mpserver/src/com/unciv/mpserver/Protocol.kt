@@ -15,7 +15,7 @@ val DEFAULT_TEAMS: Map<String, List<String>> = linkedMapOf(
 @Serializable
 data class CreateGameRequest(
     val mapSize: String = "Huge",
-    val cityStates: Int = 4,
+    val cityStates: Int = 3,
     /** Fixed teams: teammates are permanently at peace, teams are permanently at war. */
     val teams: Map<String, List<String>> = DEFAULT_TEAMS,
     /** Seats played through the API (humans or bots). Every other civ is Unciv AI. */
@@ -29,6 +29,15 @@ data class CreateGameRequest(
     val fixedTeams: Boolean = true,
     /** Each team starts on its own half of the map (false = Unciv's random, interleaved starts). */
     val groupedStarts: Boolean = true,
+    /** City-states sit on the front between the teams, rich in resources, at war with everyone. */
+    val contestedCityStates: Boolean = true,
+    /** Fill every non-seat slot with a random major nation (seeded); team names and sizes come from [teams]. */
+    val randomLeaders: Boolean = true,
+    /**
+     * Anti-snowball once the war is on: an overextended leading team loses production, captures from it pay a bounty ([CatchUp]).
+     * Off by default until it is measured over many seeds.
+     */
+    val catchUp: Boolean = false,
 ) {
     fun problems(): List<String> = buildList {
         val nations = teams.values.flatten()

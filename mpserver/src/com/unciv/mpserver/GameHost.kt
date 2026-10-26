@@ -57,6 +57,8 @@ class GameHost private constructor(
     private var roundOpenedAt = System.currentTimeMillis()
     private var paused = true
     private var events: Map<String, List<String>> = emptyMap()
+    /** Every overextension and bounty applied so far (not persisted; for benches and logs). */
+    val catchUpLog = ArrayList<String>()
     private val frames = ArrayList<ReplayFrame>()
     private var lastResult: RoundResult? = null
     var winningTeam: String? = null
@@ -69,7 +71,10 @@ class GameHost private constructor(
     companion object {
         const val MAX_PLAN = 500
 
-        fun create(gameId: String, request: CreateGameRequest, dataDir: File): GameHost {
+        fun create(gameId: String, requested: CreateGameRequest, dataDir: File): GameHost {
+            val request = if (!requested.randomLeaders) requested else requested.copy(teams = TeamRules.randomizeTeams(
+                requested.teams, requested.externalSeats,
+                RulesetCache[BaseRuleset.Civ_V_GnK.fullName]!!.nations.values.filter { it.isMajorCiv }.map { it.name }, requested.seed))
             val seats = request.externalSeats.associateWith { Seat(it, UUID.randomUUID().toString(), TeamRules.teamOf(request.teams, it)) }
             val host = GameHost(gameId, request, GameStore(File(dataDir, gameId)), seats)
             host.game = host.startGame()
@@ -120,6 +125,7 @@ class GameHost private constructor(
         val game = GameStarter.startNewGame(GameSetupInfo(params, mapParams))
         UncivGame.Current.gameInfo = game
         if (request.groupedStarts) TeamRules.groupStarts(game, request.teams, request.seed)
+        if (request.contestedCityStates) TeamRules.placeContestedCityStates(game, request.teams, request.seed)
         if (request.fixedTeams) TeamRules.applyAtStart(game, request.teams, atWar = request.warFromTurn <= 0)
         return game
     }
@@ -216,6 +222,7 @@ class GameHost private constructor(
         var seatMs = 0L
         var aiMs = 0L
 
+        val ownersBefore = CatchUp.owners(game)
         val totalMs = timed {
             RoundEngine.resolve(game, order) { civ ->
                 val seat = seats[civ.civName]
@@ -239,6 +246,8 @@ class GameHost private constructor(
                 }
             }
             if (request.fixedTeams && game.turns == request.warFromTurn) TeamRules.startWar(game, request.teams)
+            if (request.fixedTeams && request.catchUp && game.turns > request.warFromTurn)
+                catchUpLog += CatchUp.apply(game, request.teams, ownersBefore)
         }
 
         var saveBytes = 0

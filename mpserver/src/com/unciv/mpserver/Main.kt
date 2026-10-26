@@ -239,7 +239,7 @@ private fun restoreLatest(): GameHost? {
 
 /**
  * 8v8 timing + AI sanity benchmark, all 16 civs Unciv AI (worst case for server time per round):
- * `./gradlew :mpserver:run -PserverArgs="bench <mapSize> <turns> [warFromTurn|vanilla] [cityStates] [seed] [grouped|mixed]"`.
+ * `./gradlew :mpserver:run -PserverArgs="bench <mapSize> <turns> [warFromTurn|vanilla] [cityStates] [seed] [grouped|mixed] [catchup]"`.
  * "vanilla" keeps Unciv's free diplomacy (teams are only labels), as a control.
  */
 private fun bench(args: List<String>) {
@@ -249,14 +249,18 @@ private fun bench(args: List<String>) {
     val defaults = CreateGameRequest()
     val request = defaults.copy(mapSize = mapSize, externalSeats = emptyList(), fixedTeams = mode != "vanilla",
         warFromTurn = mode?.toIntOrNull() ?: defaults.warFromTurn, cityStates = args.getOrNull(3)?.toIntOrNull() ?: defaults.cityStates,
-        seed = args.getOrNull(4)?.toLongOrNull() ?: defaults.seed, groupedStarts = args.getOrNull(5) != "mixed")
-    val dir = File(System.getProperty("java.io.tmpdir"), "mpserver-bench").apply { deleteRecursively() }
+        seed = args.getOrNull(4)?.toLongOrNull() ?: defaults.seed, groupedStarts = args.getOrNull(5) != "mixed",
+        catchUp = args.getOrNull(6) == "catchup")
+    // Per seed, so several benches can run in parallel
+    val dir = File(System.getProperty("java.io.tmpdir"), "mpserver-bench-${request.seed}").apply { deleteRecursively() }
     onGameThread {
         val host = GameHost.create("bench", request, dir)
         println("bench: $mapSize (${host.game.tileMap.tileList.size} tiles), ${request.teams.values.sumOf { it.size }} majors, " +
-            "${request.cityStates} city-states, seed ${request.seed}, ${if (request.groupedStarts) "grouped" else "mixed"} starts, " + if (request.fixedTeams) "fixed teams, war from turn ${request.warFromTurn}" else "vanilla diplomacy")
+            "${request.cityStates} city-states, seed ${request.seed}, ${if (request.groupedStarts) "grouped" else "mixed"} starts, " + if (request.fixedTeams) "fixed teams, war from turn ${request.warFromTurn}" else "vanilla diplomacy" + if (request.catchUp) ", catch-up" else "")
+        for ((team, nations) in host.request.teams) println("  $team: ${nations.joinToString()}")
+        println("  city-states: " + host.game.civilizations.filter { it.isCityState }.joinToString { cs -> cs.civName + " " + (cs.cities.firstOrNull()?.getCenterTile()?.position ?: "-") })
         val starts = host.game.civilizations.filter { it.isMajorCiv() }.associateWith { it.units.getCivUnits().first().getTile() }
-        val toEnemy = starts.map { (civ, tile) -> starts.filter { (o, _) -> TeamRules.teamOf(request.teams, o.civName) != TeamRules.teamOf(request.teams, civ.civName) }
+        val toEnemy = starts.map { (civ, tile) -> starts.filter { (o, _) -> TeamRules.teamOf(host.request.teams, o.civName) != TeamRules.teamOf(host.request.teams, civ.civName) }
             .values.minOf { it.aerialDistanceTo(tile) } }.sorted()
         println("start -> nearest enemy start: min ${toEnemy.first()}, median ${toEnemy[toEnemy.size / 2]}, max ${toEnemy.last()} tiles")
         val roundMs = ArrayList<Long>()
@@ -264,13 +268,14 @@ private fun bench(args: List<String>) {
         for (r in (1..turns).asSequence().flatMap { host.autoplay(1) }) {
             roundMs += r.timings.run { seatMs + aiMs + turnMs + saveMs }
             if (host.game.turns % 50 == 0 || r.winningTeam != null) {
-                println(teamSnapshot(host) + "  | round ms avg ${roundMs.average().toLong()} max ${roundMs.max()}, save ${r.timings.saveBytes / 1024} KB")
+                println(teamSnapshot(host) + "  catch-up: ${host.catchUpLog.count { "bounty" in it }} bounties, " +
+                    "${host.catchUpLog.count { "overextended" in it }} overextended civ-turns" + "  | round ms avg ${roundMs.average().toLong()} max ${roundMs.max()}, save ${r.timings.saveBytes / 1024} KB")
                 roundMs.clear()
             }
             if (r.winningTeam != null) { println("WINNER at turn ${host.game.turns}: ${r.winningTeam}"); break }
         }
         println("final, per civ:")
-        for ((team, nations) in request.teams) for (civ in host.game.civilizations.filter { it.civName in nations }) {
+        for ((team, nations) in host.request.teams) for (civ in host.game.civilizations.filter { it.civName in nations }) {
             println("  %-6s %-16s %-5s cities %2d (captured %d)  pop %3d  military %3d".format(team, civ.civName,
                 if (civ.isAlive()) "" else "DEAD", civ.cities.size, civ.cities.count { it.foundingCivObject != civ },
                 civ.cities.sumOf { it.population.population }, civ.units.getCivUnits().count { it.isMilitary() }))
@@ -288,6 +293,8 @@ private fun teamSnapshot(host: GameHost): String = "turn %3d  ".format(host.game
         val civs = host.game.civilizations.filter { it.civName in nations }
         val captured = civs.flatMap { it.cities }.count { it.foundingCivObject != null && it.foundingCivObject!!.civName !in nations }
         "$team: ${civs.count { it.isAlive() }}/${civs.size} alive, ${civs.sumOf { it.cities.size }} cities ($captured taken), techs ${civs.sumOf { it.tech.techsResearched.size }}"
+    } + "  CS: " + host.game.getCities().filter { it.foundingCivObject?.isCityState == true }.joinToString(" ") { city ->
+        "${city.name}=" + (TeamRules.teamOf(host.request.teams, city.civ.civName) ?: if (city.civ.isCityState) "free" else city.civ.civName)
     }
 
 private fun onGameThread(block: () -> Unit) {

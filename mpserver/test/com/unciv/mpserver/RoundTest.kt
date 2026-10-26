@@ -2,6 +2,7 @@ package com.unciv.mpserver
 
 import com.unciv.logic.civilization.diplomacy.DiplomaticStatus
 import com.unciv.logic.map.HexMath
+import com.unciv.models.ruleset.tile.ResourceType
 import com.unciv.models.ruleset.unique.UniqueType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -24,7 +25,8 @@ class RoundTest {
     private val dataDir: File = Files.createTempDirectory("mpserver-test").toFile()
 
     private fun newHost(seats: List<String> = listOf("America", "Germany"), warFromTurn: Int = 0) = GameHost.create(
-        "t", CreateGameRequest(mapSize = "Tiny", cityStates = 2, teams = teams, externalSeats = seats, seed = 3, warFromTurn = warFromTurn), dataDir
+        "t", CreateGameRequest(mapSize = "Tiny", cityStates = 2, teams = teams, externalSeats = seats, seed = 3, warFromTurn = warFromTurn,
+            randomLeaders = false), dataDir
     )
 
     @Test fun teamsArePermanentAlliesAndEnemies() {
@@ -34,6 +36,17 @@ class RoundTest {
         assertEquals(DiplomaticStatus.War, america.getDiplomacyManager(host.civ("Germany")!!)!!.diplomaticStatus)
         assertEquals(DiplomaticStatus.War, america.getDiplomacyManager(host.civ("Japan")!!)!!.diplomaticStatus)
         assertTrue(host.game.ruleset.modOptions.hasUnique(UniqueType.DiplomaticRelationshipsCannotChange))
+    }
+
+    @Test fun teammatesShareVision() {
+        val host = newHost()
+        host.autoplay(2)
+        val america = host.civ("America")!!
+        val england = host.civ("England")!!
+        america.cache.updateViewableTiles()
+        val englandSees = england.cache.ourTilesAndNeighboringTiles + england.units.getCivUnits().flatMap { it.viewableTiles }
+        assertTrue(englandSees.isNotEmpty())
+        assertTrue(englandSees.all { it in america.viewableTiles })
     }
 
     @Test fun peacePeriodEndsInWarAtTheConfiguredTurn() {
@@ -60,6 +73,63 @@ class RoundTest {
         val allies = teams["Allies"]!!.map(axis)
         val axisTeam = teams["Axis"]!!.map(axis)
         assertTrue("teams overlap: $allies vs $axisTeam", allies.max() <= axisTeam.min() || axisTeam.max() <= allies.min())
+    }
+
+    @Test fun randomLeadersKeepSeatsAndDifferBySeed() {
+        val rosters = listOf(5L, 6L).map { seed ->
+            GameHost.create("r$seed", CreateGameRequest(mapSize = "Tiny", cityStates = 0, teams = teams,
+                externalSeats = listOf("America"), seed = seed), dataDir).request.teams
+        }
+        for (r in rosters) {
+            assertTrue("America" in r["Allies"]!!)
+            assertEquals(4, r.values.flatten().toSet().size)
+            assertEquals(listOf(2, 2), r.values.map { it.size })
+        }
+        assertTrue(rosters[0] != rosters[1])
+    }
+
+    @Test fun overextendedLeaderPaysAndCapturesFromItEarnBounties() {
+        val host = newHost()
+        host.autoplay(2)
+        val (america, england, germany, japan) = listOf("America", "England", "Germany", "Japan").map { host.civ(it)!! }
+        assertTrue(listOf(america, england, germany, japan).all { it.cities.size == 1 })
+        england.cities.first().moveToCiv(germany) // Axis now holds 3 of 4 cities
+        val americaCity = america.cities.first()
+        val before = CatchUp.owners(host.game) + (americaCity.location to "Japan") // as if America just took it from Japan
+        val goldBefore = america.gold
+
+        val log = CatchUp.apply(host.game, teams, before)
+
+        val penalty = { civ: com.unciv.logic.civilization.Civilization -> civ.temporaryUniques.map { it.unique }.filter { it.startsWith("[-") } }
+        assertEquals(listOf("[-25]% [Production] [in all cities]"), penalty(germany))
+        assertEquals(1, penalty(japan).size)
+        assertTrue(penalty(america).isEmpty())
+        assertEquals(100 + 2 * host.game.turns, america.gold - goldBefore)
+        assertTrue(america.temporaryUniques.any { it.unique == "[+20]% [Production] [in all cities]" && it.turnsLeft == 5 })
+        assertTrue(england.temporaryUniques.none { it.unique.startsWith("[+20]%") }) // no cities left: out of the game
+        assertEquals(3, log.size)
+    }
+
+    @Test fun cityStatesSitBetweenTheTeamsRichDefendedAndAtWarOnlyWithTeams() {
+        val host = GameHost.create("cs", CreateGameRequest(mapSize = "Small", cityStates = 2, teams = teams,
+            externalSeats = listOf("America", "Germany"), seed = 11, randomLeaders = false), dataDir)
+        val cityStates = host.game.civilizations.filter { it.isCityState }
+        assertEquals(2, cityStates.size)
+        val majors = host.game.civilizations.filter { it.isMajorCiv() }
+        for (cs in cityStates) {
+            val city = cs.cities.single()
+            for (major in majors) assertEquals(DiplomaticStatus.War, cs.getDiplomacyManager(major)!!.diplomaticStatus)
+            for (other in cityStates.filter { it != cs && cs.knows(it) })
+                assertTrue("${cs.civName} at war with ${other.civName}", cs.getDiplomacyManager(other)!!.diplomaticStatus != DiplomaticStatus.War)
+            assertEquals(listOf("Archer", "Spearman"), cs.units.getCivUnits().filter { it.isMilitary() }.map { it.name }.sorted().toList())
+            val rich = city.getCenterTile().getTilesInDistance(2).count { it.tileResource?.resourceType.let { t ->
+                t == ResourceType.Luxury || t == ResourceType.Strategic } }
+            assertTrue("only $rich rich tiles near ${city.name}", rich >= 3)
+            // Closer to the middle than to either team's capital area: each team has a start at least as far away as the other's nearest
+            val nearestByTeam = teams.mapValues { (_, names) -> majors.filter { it.civName in names }
+                .minOf { it.units.getCivUnits().first().getTile().aerialDistanceTo(city.getCenterTile()) } }
+            assertTrue("city-state ${city.name} not between teams: $nearestByTeam", nearestByTeam.values.all { it >= 4 })
+        }
     }
 
     @Test fun diplomacyIntentsAreRejected() {

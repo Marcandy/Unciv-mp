@@ -617,7 +617,8 @@ object NextTurnAutomation {
             val onSpaceshipPart = city.cityConstructions.getCurrentConstruction().name in civInfo.gameInfo.spaceResources
             // Local threat, not "our whole army vs the sum of every enemy's": that comparison is always lost
             // in multi-front wars and turned every city into a permanent barracks.
-            if (city.health < city.getMaxHealth() || (AlliedMilitaryAutomation.isCityLocallyThreatened(city) && !onSpaceshipPart)) {
+            if (city.health < city.getMaxHealth() || (AlliedMilitaryAutomation.isCityLocallyThreatened(city) && !onSpaceshipPart)
+                    || (AlliedMilitaryAutomation.shouldTrainForTeam(city) && !onSpaceshipPart)) {
                 Automation.tryTrainMilitaryUnit(city) // need defenses if city is under attack
                 if (city.cityConstructions.constructionQueue.isNotEmpty())
                     continue // found a unit to build so move on

@@ -119,6 +119,8 @@ object UnitAutomation {
 
         if (tryHeadTowardsEncampment(unitView)) return
 
+        if (AlliedMilitaryAutomation.tryHoldNearAlliedCity(unitView.getUnit())) return
+
         if (tryGarrisoningLandUnit(unitView)) return
 
         if (unitView.unitHealth < 80 && tryHealUnit(unitView, cache)) return
@@ -572,7 +574,7 @@ object UnitAutomation {
             unitView.tryHeadTowards(reachableTileNearSiegedCity)
             return !unitView.hasMovement()
         }
-        return tryHelpAlliedCityUnderAttack(unitView)
+        return tryHelpAlliedCityUnderAttack(unitView) || AlliedMilitaryAutomation.tryReinforceTeam(unitView.getUnit())
     }
 
     /** A defensive pact partner's city nearby is being attacked: go help, if our own cities are safe. */

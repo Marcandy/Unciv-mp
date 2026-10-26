@@ -8,6 +8,7 @@ import com.unciv.logic.civilization.NotificationCategory
 import com.unciv.logic.civilization.NotificationIcon
 import com.unciv.logic.civilization.PlayerType
 import com.unciv.logic.civilization.Proximity
+import com.unciv.logic.civilization.diplomacy.DiplomaticStatus
 import com.unciv.logic.civilization.transients.CapitalConnectionsFinder.CapitalConnectionMedium
 import com.unciv.logic.map.HexCoord
 import com.unciv.logic.map.MapShape
@@ -202,9 +203,15 @@ class CivInfoTransientCache(val civInfo: Civilization) {
         val newViewableTiles = HashSet<Tile>(ourTilesAndNeighboringTiles)
         newViewableTiles.addAll(civInfo.units.getCivUnits().flatMap { unit -> unit.viewableTiles.asSequence().filter { it.getOwner() != civInfo } })
 
+        val fixedTeams = civInfo.gameInfo.ruleset.modOptions.hasUnique(UniqueType.DiplomaticRelationshipsCannotChange)
         for (otherCiv in civInfo.getKnownCivs()) {
             if (otherCiv.allyCiv == civInfo || otherCiv == civInfo.allyCiv) {
                 newViewableTiles.addAll(otherCiv.cities.asSequence().flatMap { it.getTiles() })
+            }
+            // Fixed-team games: teammates (defensive pacts that can never change) share vision
+            if (fixedTeams && civInfo.getDiplomacyManager(otherCiv)?.diplomaticStatus == DiplomaticStatus.DefensivePact) {
+                newViewableTiles.addAll(otherCiv.cache.ourTilesAndNeighboringTiles)
+                newViewableTiles.addAll(otherCiv.units.getCivUnits().flatMap { it.viewableTiles.asSequence() })
             }
         }
 
